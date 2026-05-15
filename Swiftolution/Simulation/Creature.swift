@@ -75,9 +75,16 @@ final class Creature {
     }
 
     func eat(food: FoodSource) {
-        // Pflanzenfresser verdauen Pflanzen gut, Fleischfresser schlecht.
-        // Leichen und Kampfabfall verdaut jeder gleich gut — Fleisch ist Fleisch.
-        let digestibility: Float = food.type == .plant ? (1.0 - dna.aggression * 0.7) : 1.0
+        let digestibility: Float
+        switch food.type {
+        case .plant:
+            // Spezialisierung × Verdauungseffizienz: Pflanzenfresser extrahieren 60% der Pflanzenenergie,
+            // Fleischfresser noch weniger (Enzyme fehlen). Pflanzenenergie ist schwer zugänglich (Zellulose).
+            digestibility = (1.0 - dna.aggression * 0.7) * 0.6
+        case .corpse:
+            // Fleisch ist verdaulicher als Pflanzenmaterial, aber trophische Verluste bleiben.
+            digestibility = 0.65
+        }
         energy = min(energy + food.energyValue * digestibility, maxEnergy)
     }
 

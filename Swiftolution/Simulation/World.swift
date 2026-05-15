@@ -116,10 +116,21 @@ final class World {
         }
 
         let densityRadius: CGFloat = 55
-        let nearbyCount   = grid.nearbyCreatures(to: creature.position, within: densityRadius)
-                                 .filter { $0 != creature && distance($0.position, creature.position) < densityRadius }
-                                 .count
-        let localDensity  = min(Float(nearbyCount) / 8.0, 1.0)
+        let nearbyForDensity = grid.nearbyCreatures(to: creature.position, within: densityRadius)
+                                   .filter { $0 != creature && distance($0.position, creature.position) < densityRadius }
+        let localDensity  = min(Float(nearbyForDensity.count) / 8.0, 1.0)
+
+        // Circular mean der Bewegungsrichtungen aller Nachbarn im 80px-Radius.
+        // sin/cos-Komponenten mitteln verhindert Fehler wenn Winkel über ±π springen.
+        let headingRadius: CGFloat = 80
+        let neighbors = grid.nearbyCreatures(to: creature.position, within: headingRadius)
+                            .filter { $0 != creature && distance($0.position, creature.position) < headingRadius }
+        var avgNearbyHeading: Float = 0
+        if !neighbors.isEmpty {
+            let sinMean = neighbors.reduce(Float(0)) { $0 + sin($1.heading) } / Float(neighbors.count)
+            let cosMean = neighbors.reduce(Float(0)) { $0 + cos($1.heading) } / Float(neighbors.count)
+            avgNearbyHeading = normalizeAngle(atan2(sinMean, cosMean) - creature.heading) / .pi
+        }
 
         let terrainValue: Float
         switch terrain.at(creature.position) {
@@ -138,7 +149,8 @@ final class World {
             localDensity:                localDensity,
             aggressionOfNearestCreature: nearestAggression,
             nearestFoodType:             nearestFoodType,
-            currentTerrain:              terrainValue
+            currentTerrain:              terrainValue,
+            avgNearbyHeading:            avgNearbyHeading
         )
     }
 
