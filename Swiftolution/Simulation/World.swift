@@ -156,7 +156,6 @@ final class World {
             angleToCreature:             angleToCreature,
             distanceToCreature:          distToCreature,
             ownEnergy:                   creature.energy / creature.maxEnergy,
-            ownAge:                      Float(creature.age) / Float(creature.dna.maxAge),
             localDensity:                localDensity,
             approachVelocity:            approachVelocity,
             nearestFoodType:             nearestFoodType,
@@ -219,16 +218,24 @@ final class World {
     // MARK: - Tod
 
     private func checkDeaths() {
-        for creature in creatures where !creature.isAlive {
-            // Körpermasse zerfällt zu Nahrung — unabhängig davon wie viel Energie
-            // das Lebewesen zuletzt hatte (der Körper existiert ja trotzdem).
+        // Gompertz-ähnliche Sterblichkeit: kleines Grundrisiko + exponentiell steigendes Altersrisiko.
+        // Bei maxAge = 1.0 → Sterbenswahrscheinlichkeit ≈ 30 %/Tick — sicherer Tod, kein exaktes Datum.
+        var died = Set<UUID>()
+        for creature in creatures {
+            let ageRatio = Float(creature.age) / Float(creature.dna.maxAge)
+            let deathChance = 0.0001 + ageRatio * ageRatio * 0.003
+            if !creature.isAlive || Float.random(in: 0...1) < deathChance {
+                died.insert(creature.id)
+            }
+        }
+        for creature in creatures where died.contains(creature.id) {
             let bodyEnergy = creature.maxEnergy * 0.55
             foodSources.append(FoodSource(position: creature.position,
                                           energyValue: bodyEnergy,
                                           type: .corpse,
                                           spawnedAt: tickCount))
         }
-        creatures.removeAll { !$0.isAlive }
+        creatures.removeAll { died.contains($0.id) }
     }
 
     // MARK: - Fortpflanzung
@@ -261,17 +268,26 @@ final class World {
                 mated.insert(partner.id)
                 let midPoint = CGPoint(x: (parent.position.x + partner.position.x) / 2,
                                        y: (parent.position.y + partner.position.y) / 2)
-                let childDNA = parent.dna.crossed(with: partner.dna)
-                                         .mutated(rate: mutationRate, strength: mutationStrength)
-                newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: midPoint)))
-                parent.energy  -= parent.maxEnergy  * 0.25
-                partner.energy -= partner.maxEnergy * 0.25
+                let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
+                // Energiekosten steigen mit Wurfgröße: r-Stratege (viele Junge) zahlt mehr Gesamt-Energie
+                let costPerParent = Float(litter) * 0.10 + 0.10   // 1 Kind → 20%, 4 Kinder → 50%
+                for _ in 0..<litter {
+                    let childDNA = parent.dna.crossed(with: partner.dna)
+                                             .mutated(rate: mutationRate, strength: mutationStrength)
+                    newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: midPoint)))
+                }
+                parent.energy  -= parent.maxEnergy  * costPerParent
+                partner.energy -= partner.maxEnergy * costPerParent
             } else {
-                // Asexuell als Fallback — teurer, da kein genetischer Vorteil
+                // Asexuell als Fallback — teurer pro Kind, da kein genetischer Vorteil
                 mated.insert(parent.id)
-                let childDNA = parent.dna.mutated(rate: mutationRate, strength: mutationStrength)
-                newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: parent.position)))
-                parent.energy -= parent.maxEnergy * 0.4
+                let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
+                let cost   = Float(litter) * 0.12 + 0.16   // 1 Kind → 28%, 4 Kinder → 64%
+                for _ in 0..<litter {
+                    let childDNA = parent.dna.mutated(rate: mutationRate, strength: mutationStrength)
+                    newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: parent.position)))
+                }
+                parent.energy -= parent.maxEnergy * cost
             }
         }
 

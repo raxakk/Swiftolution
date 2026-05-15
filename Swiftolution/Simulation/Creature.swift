@@ -18,13 +18,20 @@ final class Creature {
 
     var energy: Float
     var age: Int = 0
-    var isAlive: Bool { energy > 0 && age < dna.maxAge }
+    var isAlive: Bool { energy > 0 }
+
+    // Seneszenz: steigt ab 70% der genetischen Lebensspanne, läuft unkontrolliert weiter.
+    // Bei maxAge = 1.0 → +50% Energiekosten, -30% Speed. Danach weiter steigend → Tod durch Energiemangel.
+    var senescence: Float {
+        let progress = Float(age) / Float(dna.maxAge)
+        return max(0, (progress - 0.7) / 0.3)
+    }
     var lastAction: ActionOutput?
 
     // MARK: - Abgeleitete Werte aus DNA
 
     var eatRadius:    CGFloat { CGFloat(dna.size * 8 + 4) }
-    var sightRadius:  CGFloat { CGFloat(dna.sightRadius * 120 + 40) }
+    var sightRadius:  CGFloat { CGFloat((dna.sightRadius * 120 + 40) * max(0.3, 1 - senescence * 0.4)) }
     var attackRadius: CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
     var hiddenCount:  Int     {
@@ -38,7 +45,8 @@ final class Creature {
     var canReproduce: Bool {
         // reproductionThreshold-Gen [0,1] skaliert auf 55%–85% der maximalen Energie
         let threshold = dna.reproductionThreshold * 0.3 + 0.55
-        return energy >= maxEnergy * Float(threshold) && age > 60
+        // Geschlechtsreife: 10% der genetischen Lebensspanne (skaliert mit Strategie)
+        return energy >= maxEnergy * Float(threshold) && age > dna.maxAge / 10
     }
 
     // MARK: - Init
@@ -65,7 +73,8 @@ final class Creature {
         let maxTurnRate: Float = 0.2
         heading += (output.turnAngle - 0.5) * 2 * maxTurnRate
 
-        let speed = output.speed * maxSpeed * speedModifier
+        let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3)
+        let speed = output.speed * effectiveMaxSpeed * speedModifier
         position.x += CGFloat(cos(heading) * speed)
         position.y += CGFloat(sin(heading) * speed)
 
@@ -96,7 +105,8 @@ final class Creature {
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025
         let aggressionCost: Float = dna.aggression * 0.09
         let brainCost:      Float = dna.brainSize * 0.02
-        energy -= baseCost + sizeCost + speedCost + aggressionCost + brainCost
+        let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost
+        energy -= baseCosts * (1 + senescence * 0.5)
     }
 }
 
