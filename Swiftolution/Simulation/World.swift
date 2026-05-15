@@ -19,6 +19,30 @@ final class World {
     var mutationStrength: Float  = 0.10
     var maxPopulation:    Int    = 300
 
+    // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
+    var seasonEnabled:   Bool  = false
+    var seasonLength:    Int   = 3000    // Ticks pro Jahr
+    var seasonAmplitude: Float = 0.7    // 0 = kein Effekt, 1 = Winter bringt 0% Wachstum
+
+    // Aktueller saisonaler Wachstumsfaktor [1-amplitude … 1.0]
+    var currentSeasonFactor: Double {
+        guard seasonEnabled, seasonLength > 0 else { return 1.0 }
+        let t = Double(tickCount % seasonLength) / Double(seasonLength)   // [0, 1)
+        return (1.0 - Double(seasonAmplitude))
+             + Double(seasonAmplitude) * 0.5 * (1.0 + cos(2.0 * .pi * t))
+    }
+
+    var currentSeasonName: String {
+        guard seasonEnabled, seasonLength > 0 else { return "–" }
+        let t = Double(tickCount % seasonLength) / Double(seasonLength)
+        switch t {
+        case 0..<0.25:  return "Sommer"
+        case 0.25..<0.5: return "Herbst"
+        case 0.5..<0.75: return "Winter"
+        default:         return "Frühling"
+        }
+    }
+
     private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
 
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
@@ -279,7 +303,7 @@ final class World {
 
     private func growFood() {
         let fillRatio = Double(plantCount) / Double(maxFood)
-        let newItems  = Int((foodGrowthRate * (1.0 - fillRatio) * Double(maxFood)).rounded())
+        let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
         for _ in 0..<max(0, newItems) {
             foodSources.append(FoodSource(position: randomPosition()))
             plantCount += 1

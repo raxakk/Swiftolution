@@ -79,8 +79,11 @@ struct TraitsChart: View {
     private var points: [Point] {
         snapshots.flatMap { s in [
             Point(id: "\(s.tick)-A", tick: s.tick, value: s.avgAggression, trait: "Aggression"),
-            Point(id: "\(s.tick)-S", tick: s.tick, value: s.avgSpeed,      trait: "Geschwindigkeit"),
+            Point(id: "\(s.tick)-S", tick: s.tick, value: s.avgSpeed,      trait: "Tempo"),
             Point(id: "\(s.tick)-Z", tick: s.tick, value: s.avgSize,       trait: "Größe"),
+            Point(id: "\(s.tick)-B", tick: s.tick, value: s.avgBrainSize,  trait: "Gehirn"),
+            Point(id: "\(s.tick)-M", tick: s.tick, value: s.avgMaxAge,     trait: "Langlebigkeit"),
+            Point(id: "\(s.tick)-L", tick: s.tick, value: s.avgLitterSize, trait: "Wurfgröße"),
         ]}
     }
 
@@ -99,9 +102,12 @@ struct TraitsChart: View {
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .chartForegroundStyleScale([
-                "Aggression":      Color.red,
-                "Geschwindigkeit": Color.blue,
-                "Größe":           Color.orange,
+                "Aggression":   Color.red,
+                "Tempo":        Color.blue,
+                "Größe":        Color.orange,
+                "Gehirn":       Color.indigo,
+                "Langlebigkeit": Color.mint,
+                "Wurfgröße":    Color.yellow,
             ])
             .chartYScale(domain: 0...1)
             .chartXAxis(.hidden)

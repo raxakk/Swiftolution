@@ -7,9 +7,13 @@ struct StatSnapshot: Identifiable {
     let herbivores: Int
     let carnivores: Int
     let plantFood: Int
+    let corpseFood: Int
     let avgAggression: Double
     let avgSpeed: Double
     let avgSize: Double
+    let avgBrainSize: Double
+    let avgMaxAge: Double     // Gen-Wert [0,1] — 0 = kurzlebig, 1 = langlebig
+    let avgLitterSize: Double // Gen-Wert [0,1] — 0 = K-Stratege, 1 = r-Stratege
 }
 
 final class StatisticsTracker: ObservableObject {
@@ -21,24 +25,29 @@ final class StatisticsTracker: ObservableObject {
     func update(world: World) {
         guard world.tickCount % recordInterval == 0 else { return }
 
-        let creatures    = world.creatures
-        let herbivores   = creatures.filter { $0.dna.aggression <= 0.45 }.count
-        let carnivores   = creatures.filter { $0.dna.aggression  > 0.45 }.count
-        let plantFood    = world.foodSources.filter { $0.type == .plant }.count
-        let n            = Double(creatures.count)
-        let avgAggression = n > 0 ? Double(creatures.map { $0.dna.aggression }.reduce(0, +)) / n : 0
-        let avgSpeed      = n > 0 ? Double(creatures.map { $0.dna.speed      }.reduce(0, +)) / n : 0
-        let avgSize       = n > 0 ? Double(creatures.map { $0.dna.size       }.reduce(0, +)) / n : 0
+        let creatures = world.creatures
+        let herbivores = creatures.filter { $0.dna.aggression <= 0.45 }.count
+        let carnivores = creatures.filter { $0.dna.aggression  > 0.45 }.count
+        let corpseFood = world.foodSources.filter { $0.type == .corpse }.count
+        let n = Double(creatures.count)
+
+        func avg(_ f: (Creature) -> Float) -> Double {
+            n > 0 ? Double(creatures.map(f).reduce(0, +)) / n : 0
+        }
 
         snapshots.append(StatSnapshot(
             id:            world.tickCount,
             tick:          world.tickCount,
             herbivores:    herbivores,
             carnivores:    carnivores,
-            plantFood:     plantFood,
-            avgAggression: avgAggression,
-            avgSpeed:      avgSpeed,
-            avgSize:       avgSize
+            plantFood:     world.plantCount,
+            corpseFood:    corpseFood,
+            avgAggression: avg { $0.dna.aggression },
+            avgSpeed:      avg { $0.dna.speed },
+            avgSize:       avg { $0.dna.size },
+            avgBrainSize:  avg { $0.dna.brainSize },
+            avgMaxAge:     avg { $0.dna.genes[4] },
+            avgLitterSize: avg { $0.dna.genes[10] }
         ))
 
         if snapshots.count > maxSnapshots { snapshots.removeFirst() }

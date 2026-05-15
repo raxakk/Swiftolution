@@ -73,11 +73,14 @@ final class SimulationEngine: ObservableObject {
         let area      = Double(world.size.width * world.size.height)
         let refArea   = 800.0 * 600.0
         let scale     = sqrt(area / refArea)
-        world.maxFood         = Int(Double(config.foodCapacity) * scale)
-        world.maxPopulation   = Int(300.0 * scale)
-        world.foodGrowthRate  = config.foodGrowthRate
-        world.mutationRate    = config.mutationRate
+        world.maxFood          = Int(Double(config.foodCapacity) * scale)
+        world.maxPopulation    = Int(300.0 * scale)
+        world.foodGrowthRate   = config.foodGrowthRate
+        world.mutationRate     = config.mutationRate
         world.mutationStrength = config.mutationStrength
+        world.seasonEnabled    = config.seasonEnabled
+        world.seasonLength     = config.seasonLength
+        world.seasonAmplitude  = config.seasonAmplitude
     }
 
     // MARK: - Loop
@@ -107,15 +110,19 @@ final class SimulationEngine: ObservableObject {
 
     private func updateStats() {
         let creatures       = world.creatures
+        stats.tickCount     = world.tickCount
         stats.generation    = world.generation
         stats.population    = creatures.count
         stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.45 }.count
         stats.carnivores    = creatures.filter { $0.dna.aggression  > 0.45 }.count
         stats.totalBirths   = world.totalBirths
-        stats.foodCount     = world.plantCount
+        stats.plantCount    = world.plantCount
+        stats.corpseCount   = world.foodSources.filter { $0.type == .corpse }.count
         stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
         let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
         stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)
+        stats.currentSeason = world.currentSeasonName
+        stats.seasonFactor  = world.currentSeasonFactor
 
         if let id = selectedCreatureID,
            let creature = creatures.first(where: { $0.id == id }) {
@@ -135,6 +142,11 @@ struct SimulationConfig {
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
 
+    // Jahreszeiten (sofort wirksam)
+    var seasonEnabled:   Bool  = false
+    var seasonLength:    Int   = 3000   // Ticks pro Jahr
+    var seasonAmplitude: Float = 0.70   // 0 = kein Effekt, 1 = Winter → 0% Wachstum
+
     // Erst beim Neustart wirksam
     var worldWidth:       Int = 2400
     var worldHeight:      Int = 1800
@@ -145,50 +157,65 @@ struct SimulationConfig {
 // MARK: - Kreatur-Snapshot (für Inspektion)
 
 struct CreatureSnapshot {
-    let age:                  Int
-    let maxAge:               Int
-    let energyRatio:          Float
-    let isHerbivore:          Bool
+    let age:              Int
+    let maxAge:           Int
+    let energyRatio:      Float
+    let bodyMassRatio:    Float   // bodyMass / maxBodyMass
+    let senescence:       Float   // [0,1] — 0 = jung, >0 = Altersabbau aktiv
+    let isHerbivore:      Bool
     // DNA
-    let size:                 Float
-    let speed:                Float
-    let aggression:           Float
-    let sightRadius:          Float
-    let reproThreshold:       Float
-    let brainSize:            Float
-    let hiddenCount:          Int
+    let size:             Float
+    let speed:            Float
+    let aggression:       Float
+    let sightRadiusGene:  Float   // Rohwert [0,1]
+    let sightRadiusPx:    Float   // berechneter Radius in Pixeln (inkl. Seneszenz)
+    let maxAgeGene:       Float   // [0,1] — zeigt Lebensstrategien-Pol
+    let reproThreshold:   Float
+    let litterSize:       Int
+    let brainSize:        Float
+    let hiddenCount:      Int
     // Aktuelles NN-Verhalten
-    let actionSpeed:          Float
-    let actionReproduce:      Float
-    let actionAttack:         Float
+    let actionSpeed:      Float
+    let actionReproduce:  Float
+    let actionAttack:     Float
 
     init(_ c: Creature) {
-        age            = c.age
-        maxAge         = c.dna.maxAge
-        energyRatio    = max(0, min(c.energy / c.maxEnergy, 1))
-        isHerbivore    = c.dna.aggression <= 0.45
-        size           = c.dna.size
-        speed          = c.dna.speed
-        aggression     = c.dna.aggression
-        sightRadius    = c.dna.sightRadius
+        age           = c.age
+        maxAge        = c.dna.maxAge
+        energyRatio   = max(0, min(c.energy / c.maxEnergy, 1))
+        let maxBM     = c.dna.size * 60 + 20
+        bodyMassRatio = maxBM > 0 ? max(0, min(c.bodyMass / maxBM, 1)) : 0
+        senescence    = c.senescence
+        isHerbivore   = c.dna.aggression <= 0.45
+        size          = c.dna.size
+        speed         = c.dna.speed
+        aggression    = c.dna.aggression
+        sightRadiusGene = c.dna.sightRadius
+        sightRadiusPx   = Float(c.sightRadius)
+        maxAgeGene    = c.dna.genes[4]
         reproThreshold = c.dna.reproductionThreshold
-        brainSize      = c.dna.brainSize
-        hiddenCount    = c.hiddenCount
-        actionSpeed    = c.lastAction?.speed          ?? 0
+        litterSize    = c.dna.litterSize
+        brainSize     = c.dna.brainSize
+        hiddenCount   = c.hiddenCount
+        actionSpeed   = c.lastAction?.speed             ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
-        actionAttack   = c.lastAction?.wantsToAttack  ?? 0
+        actionAttack  = c.lastAction?.wantsToAttack     ?? 0
     }
 }
 
 // MARK: - Statistiken
 
 struct SimulationStats {
+    var tickCount:     Int    = 0
     var generation:    Int    = 0
     var population:    Int    = 0
     var herbivores:    Int    = 0
     var carnivores:    Int    = 0
     var totalBirths:   Int    = 0
-    var foodCount:     Int    = 0
+    var plantCount:    Int    = 0
+    var corpseCount:   Int    = 0
     var oldestAge:     Int    = 0
     var averageEnergy: Double = 0
+    var currentSeason: String = "–"
+    var seasonFactor:  Double = 1.0
 }

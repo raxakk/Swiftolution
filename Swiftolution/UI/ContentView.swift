@@ -65,14 +65,20 @@ struct SidebarView: View {
 
                 // MARK: Statistiken
                 SidebarSection(title: "Statistiken") {
+                    StatRow(label: "Tick",            value: "\(engine.stats.tickCount)")
                     StatRow(label: "Generation",      value: "\(engine.stats.generation)")
                     StatRow(label: "Population",      value: "\(engine.stats.population)")
                     StatRow(label: "Pflanzenfresser", value: "\(engine.stats.herbivores)")
                     StatRow(label: "Fleischfresser",  value: "\(engine.stats.carnivores)")
                     StatRow(label: "Geburten",        value: "\(engine.stats.totalBirths)")
-                    StatRow(label: "Pflanzen",        value: "\(engine.stats.foodCount) / \(engine.config.foodCapacity)")
+                    StatRow(label: "Pflanzen",        value: "\(engine.stats.plantCount) / \(engine.config.foodCapacity)")
+                    StatRow(label: "Leichen",         value: "\(engine.stats.corpseCount)")
                     StatRow(label: "Ältestes",        value: "\(engine.stats.oldestAge) Ticks")
                     StatRow(label: "Ø Energie",       value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
+                    if engine.config.seasonEnabled {
+                        StatRow(label: "Jahreszeit",
+                                value: "\(engine.stats.currentSeason) (\(Int(engine.stats.seasonFactor * 100))%)")
+                    }
                 }
 
                 // MARK: Steuerung
@@ -118,6 +124,34 @@ struct SidebarView: View {
                         ),
                         range: 0.005...0.15
                     )
+
+                    Toggle("Jahreszeiten", isOn: Binding(
+                        get: { engine.config.seasonEnabled },
+                        set: { engine.config.seasonEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
+
+                    if engine.config.seasonEnabled {
+                        ParamSlider(
+                            label: "Jahreslänge",
+                            displayValue: "\(engine.config.seasonLength) Ticks",
+                            value: Binding(
+                                get: { Double(engine.config.seasonLength) },
+                                set: { engine.config.seasonLength = Int($0) }
+                            ),
+                            range: 500...10000
+                        )
+                        ParamSlider(
+                            label: "Saisonalität",
+                            displayValue: String(format: "%.0f%%", Double(engine.config.seasonAmplitude) * 100),
+                            value: Binding(
+                                get: { Double(engine.config.seasonAmplitude) },
+                                set: { engine.config.seasonAmplitude = Float($0) }
+                            ),
+                            range: 0.1...1.0
+                        )
+                    }
                 }
 
                 // MARK: Evolution (sofort wirksam)

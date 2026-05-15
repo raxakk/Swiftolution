@@ -11,15 +11,24 @@ struct InspectionView: View {
                 .font(.caption.bold())
                 .foregroundStyle(snapshot.isHerbivore ? Color.green : Color.red)
 
-            // Energie & Alter
+            // Zustand
             TraitBar(label: "Energie",
                      value: snapshot.energyRatio,
                      color: energyColor(snapshot.energyRatio))
+            TraitBar(label: "Körpermasse",
+                     value: snapshot.bodyMassRatio,
+                     color: .brown)
             HStack {
                 Text("Alter").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Text("\(snapshot.age) / \(snapshot.maxAge)")
                     .font(.caption2.monospacedDigit())
+            }
+            if snapshot.senescence > 0 {
+                TraitBar(label: "Seneszenz",
+                         value: snapshot.senescence,
+                         color: .gray,
+                         displayOverride: String(format: "%.0f%%", snapshot.senescence * 100))
             }
 
             Divider()
@@ -30,14 +39,17 @@ struct InspectionView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            TraitBar(label: "Größe",           value: snapshot.size,           color: .orange)
-            TraitBar(label: "Tempo (Potenzial)", value: snapshot.speed,         color: .blue)
-            TraitBar(label: "Aggression",       value: snapshot.aggression,     color: .red)
-            TraitBar(label: "Sichtweite",       value: snapshot.sightRadius,    color: .purple)
+            TraitBar(label: "Größe",             value: snapshot.size,          color: .orange)
+            TraitBar(label: "Tempo",             value: snapshot.speed,         color: .blue)
+            TraitBar(label: "Aggression",        value: snapshot.aggression,    color: .red)
+            TraitBar(label: "Sichtweite",        value: snapshot.sightRadiusGene, color: .purple,
+                     displayOverride: String(format: "%.0f px", snapshot.sightRadiusPx))
+            TraitBar(label: "Lebenserwartung",   value: snapshot.maxAgeGene,    color: .mint,
+                     displayOverride: "\(snapshot.maxAge) Ticks")
             TraitBar(label: "Fortpfl.-Schwelle", value: snapshot.reproThreshold, color: .teal)
-            TraitBar(label: "Gehirngröße",
-                     value: snapshot.brainSize,
-                     color: .indigo,
+            TraitBar(label: "Wurfgröße",         value: Float(snapshot.litterSize - 1) / 3.0, color: .yellow,
+                     displayOverride: "\(snapshot.litterSize)")
+            TraitBar(label: "Gehirn",            value: snapshot.brainSize,     color: .indigo,
                      displayOverride: "\(snapshot.hiddenCount) Neuronen")
 
             Divider()
@@ -48,9 +60,9 @@ struct InspectionView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            TraitBar(label: "Geschwindigkeit", value: snapshot.actionSpeed,    color: .cyan)
+            TraitBar(label: "Geschwindigkeit", value: snapshot.actionSpeed,     color: .cyan)
             TraitBar(label: "Fortpflanzung",   value: snapshot.actionReproduce, color: .teal)
-            TraitBar(label: "Angriffsdrang",   value: snapshot.actionAttack,   color: .red)
+            TraitBar(label: "Angriffsdrang",   value: snapshot.actionAttack,    color: .red)
         }
     }
 
