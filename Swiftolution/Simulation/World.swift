@@ -18,6 +18,8 @@ final class World {
     var mutationStrength: Float  = 0.10
     let maxPopulation:    Int    = 300
 
+    private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
+
     init(size: CGSize = CGSize(width: 800, height: 600)) {
         self.size = size
     }
@@ -37,6 +39,7 @@ final class World {
 
     func tick() {
         tickCount += 1
+        grid.rebuild(creatures: creatures, food: foodSources)
         moveCreatures()
         attackCreatures()
         feedCreatures()
@@ -84,10 +87,10 @@ final class World {
             nearestAggression = other.dna.aggression
         }
 
-        // Lokale Dichte: Anzahl Artgenossen im Nahbereich, normalisiert auf [0,1].
-        // Gibt dem NN die Möglichkeit, überfüllte Bereiche zu meiden.
         let densityRadius: CGFloat = 55
-        let nearbyCount   = creatures.filter { $0 != creature && distance($0.position, creature.position) < densityRadius }.count
+        let nearbyCount   = grid.nearbyCreatures(to: creature.position, within: densityRadius)
+                                 .filter { $0 != creature && distance($0.position, creature.position) < densityRadius }
+                                 .count
         let localDensity  = min(Float(nearbyCount) / 8.0, 1.0)
 
         return SensorInput(
@@ -152,14 +155,17 @@ final class World {
     // MARK: - Fressen
 
     private func feedCreatures() {
+        var eatenIDs = Set<UUID>()
         for creature in creatures {
-            foodSources.removeAll { food in
-                guard distance(creature.position, food.position) < creature.eatRadius else { return false }
-                if food.type == .plant && creature.dna.aggression > 0.45 { return false }
+            for food in grid.nearbyFood(to: creature.position, within: creature.eatRadius) {
+                guard !eatenIDs.contains(food.id) else { continue }
+                guard distance(creature.position, food.position) < creature.eatRadius else { continue }
+                if food.type == .plant && creature.dna.aggression > 0.45 { continue }
                 creature.eat(food: food)
-                return true
+                eatenIDs.insert(food.id)
             }
         }
+        if !eatenIDs.isEmpty { foodSources.removeAll { eatenIDs.contains($0.id) } }
     }
 
     // MARK: - Tod
@@ -284,13 +290,13 @@ final class World {
     }
 
     func nearestFood(to point: CGPoint, within radius: CGFloat) -> FoodSource? {
-        foodSources
+        grid.nearbyFood(to: point, within: radius)
             .filter { distance($0.position, point) < radius }
             .min(by: { distance($0.position, point) < distance($1.position, point) })
     }
 
     func nearestCreature(to creature: Creature, within radius: CGFloat) -> Creature? {
-        creatures
+        grid.nearbyCreatures(to: creature.position, within: radius)
             .filter { $0 != creature && distance($0.position, creature.position) < radius }
             .min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) })
     }
