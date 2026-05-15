@@ -20,6 +20,7 @@ final class SimulationEngine: ObservableObject {
     private var timer: AnyCancellable?
     private(set) var isPaused = false
     private var speedMultiplier: Double = 1.0
+    private var tickAccumulator: Double = 0
 
     // MARK: - Lifecycle
 
@@ -61,8 +62,7 @@ final class SimulationEngine: ObservableObject {
 
     func setSpeed(_ multiplier: Double) {
         speedMultiplier = multiplier
-        timer?.cancel()
-        startTimer()
+        tickAccumulator = 0
     }
 
     // MARK: - Config → World synchronisieren
@@ -83,18 +83,26 @@ final class SimulationEngine: ObservableObject {
     // MARK: - Loop
 
     private func startTimer() {
-        let interval = 1.0 / (30.0 * speedMultiplier)
-        timer = Timer.publish(every: interval, on: .main, in: .common)
+        tickAccumulator = 0
+        // Immer mit Display-Rate (60 fps) feuern — Simulations-Ticks werden pro Frame gebatcht.
+        timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
     }
 
     private func tick() {
         guard !isPaused else { return }
-        world.tick()
+        // Wie viele Simulations-Ticks in diesem Frame fällig sind
+        tickAccumulator += 30.0 * speedMultiplier / 60.0
+        let n = Int(tickAccumulator)
+        tickAccumulator -= Double(n)
+        for _ in 0..<n {
+            world.tick()
+            tracker.update(world: world)
+        }
+        guard n > 0 else { return }
         scene.update(world: world)
         updateStats()
-        tracker.update(world: world)
     }
 
     private func updateStats() {
@@ -104,7 +112,7 @@ final class SimulationEngine: ObservableObject {
         stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.45 }.count
         stats.carnivores    = creatures.filter { $0.dna.aggression  > 0.45 }.count
         stats.totalBirths   = world.totalBirths
-        stats.foodCount     = world.foodSources.filter { $0.type == .plant }.count
+        stats.foodCount     = world.plantCount
         stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
         let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
         stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)

@@ -12,6 +12,7 @@ final class World {
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
+    private(set) var plantCount: Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -34,6 +35,7 @@ final class World {
         for _ in 0..<foodCount {
             foodSources.append(FoodSource(position: randomPosition()))
         }
+        plantCount = foodCount   // Startnahrung sind alles Pflanzen
     }
 
     // MARK: - Simulations-Tick
@@ -89,19 +91,21 @@ final class World {
     private func sense(for creature: Creature) -> SensorInput {
         let sightR = Float(creature.sightRadius)
 
-        var angleToFood:     Float = 0
-        var distToFood:      Float = 1
+        var angleToFood:  Float = 0
+        var distToFood:   Float = 1
+        var nearestFoodType: Float = 0   // 0 = Pflanze, 1 = Leiche
         if let food = nearestFood(to: creature.position, within: creature.sightRadius) {
             let dx = Float(food.position.x - creature.position.x)
             let dy = Float(food.position.y - creature.position.y)
             let relAngle = normalizeAngle(atan2(dy, dx) - creature.heading)
-            angleToFood = relAngle / .pi                                           // → [-1, 1]
-            distToFood  = Float(distance(creature.position, food.position)) / sightR
+            angleToFood      = relAngle / .pi
+            distToFood       = Float(distance(creature.position, food.position)) / sightR
+            nearestFoodType  = food.type == .corpse ? 1.0 : 0.0
         }
 
-        var angleToCreature:    Float = 0
-        var distToCreature:     Float = 1
-        var nearestAggression:  Float = 0
+        var angleToCreature:   Float = 0
+        var distToCreature:    Float = 1
+        var nearestAggression: Float = 0
         if let other = nearestCreature(to: creature, within: creature.sightRadius) {
             let dx = Float(other.position.x - creature.position.x)
             let dy = Float(other.position.y - creature.position.y)
@@ -117,6 +121,13 @@ final class World {
                                  .count
         let localDensity  = min(Float(nearbyCount) / 8.0, 1.0)
 
+        let terrainValue: Float
+        switch terrain.at(creature.position) {
+        case .desert:    terrainValue = 0.0
+        case .grassland: terrainValue = 0.5
+        case .forest:    terrainValue = 1.0
+        }
+
         return SensorInput(
             angleToFood:                 angleToFood,
             distanceToFood:              distToFood,
@@ -125,50 +136,33 @@ final class World {
             ownEnergy:                   creature.energy / creature.maxEnergy,
             ownAge:                      Float(creature.age) / Float(creature.dna.maxAge),
             localDensity:                localDensity,
-            aggressionOfNearestCreature: nearestAggression
+            aggressionOfNearestCreature: nearestAggression,
+            nearestFoodType:             nearestFoodType,
+            currentTerrain:              terrainValue
         )
     }
 
     // MARK: - Angriff
 
     private func attackCreatures() {
-        // Alle Angriffe werden zuerst gesammelt und dann gleichzeitig angewendet,
-        // damit die Reihenfolge im Array keinen unfairen Vorteil bringt.
+        // Angriffe simultan sammeln damit Reihenfolge keinen Vorteil bringt.
+        // Fleischfresser töten Beute durch Schaden — Energie kommt ausschließlich durch Leichenfraß.
         var energyDeltas: [UUID: Float] = [:]
 
         for attacker in creatures {
             guard let action = attacker.lastAction,
                   action.wantsToAttack > 0.5,
-                  attacker.dna.aggression > 0.45 else { continue }  // nur echte Räuber greifen an
+                  attacker.dna.aggression > 0.45 else { continue }
 
             guard let victim = nearestCreature(to: attacker, within: attacker.attackRadius) else { continue }
-
-            // Größenvorteil: Angreifer muss mindestens 60% der Opfer-Größe haben
             guard attacker.dna.size >= victim.dna.size * 0.6 else { continue }
 
-            // Schaden abhängig von Größe und Aggression des Angreifers
             let rawDamage = (attacker.dna.size * 0.6 + attacker.dna.aggression * 0.4) * 50
-            // Verteidigung skaliert stark mit Aggression — Kannibalismus muss sich nicht lohnen.
-            // Bei aggr=0.8: Verteidigung=0.72 → Netto negativ. Bei aggr=0.1: 0.09 → Pflanzenfresser sind leichte Beute.
-            let defense = min(victim.dna.aggression * 0.9, 0.92)
-            let damage  = rawDamage * (1 - defense)
+            let defense   = min(victim.dna.aggression * 0.9, 0.92)
+            let damage    = rawDamage * (1 - defense)
 
-            // Nur so viel stehlen wie das Opfer noch hat (nach bisher gesammelten Schäden)
-            let victimCurrentEnergy = victim.energy + (energyDeltas[victim.id] ?? 0)
-            let stolen = min(damage, max(0, victimCurrentEnergy))
-
-            // Angriff kostet Energie — Jagd muss sich lohnen, sonst ist sie ruinös
             energyDeltas[attacker.id, default: 0] -= attacker.dna.aggression * 6
-            energyDeltas[attacker.id, default: 0] += stolen * 0.45
-            energyDeltas[victim.id,   default: 0] -= stolen
-
-            // Die 55% die beim Kampf "verspritzt" werden erscheinen als Nahrung am Kampfort.
-            let waste = stolen * 0.55
-            if waste > 3 {
-                let midPoint = CGPoint(x: (attacker.position.x + victim.position.x) / 2,
-                                       y: (attacker.position.y + victim.position.y) / 2)
-                foodSources.append(FoodSource(position: midPoint, energyValue: waste, type: .waste, spawnedAt: tickCount))
-            }
+            energyDeltas[victim.id,   default: 0] -= damage
         }
 
         for creature in creatures {
@@ -181,16 +175,22 @@ final class World {
 
     private func feedCreatures() {
         var eatenIDs = Set<UUID>()
+        var eatenPlants = 0
         for creature in creatures {
             for food in grid.nearbyFood(to: creature.position, within: creature.eatRadius) {
                 guard !eatenIDs.contains(food.id) else { continue }
                 guard distance(creature.position, food.position) < creature.eatRadius else { continue }
-                if food.type == .plant && creature.dna.aggression > 0.45 { continue }
+                if food.type == .plant  && creature.dna.aggression >  0.45 { continue }
+                if food.type == .corpse && creature.dna.aggression <= 0.45 { continue }
                 creature.eat(food: food)
+                if food.type == .plant { eatenPlants += 1 }
                 eatenIDs.insert(food.id)
             }
         }
-        if !eatenIDs.isEmpty { foodSources.removeAll { eatenIDs.contains($0.id) } }
+        if !eatenIDs.isEmpty {
+            foodSources.removeAll { eatenIDs.contains($0.id) }
+            plantCount -= eatenPlants
+        }
     }
 
     // MARK: - Tod
@@ -199,7 +199,7 @@ final class World {
         for creature in creatures where !creature.isAlive {
             // Körpermasse zerfällt zu Nahrung — unabhängig davon wie viel Energie
             // das Lebewesen zuletzt hatte (der Körper existiert ja trotzdem).
-            let bodyEnergy = creature.dna.size * 45 + 12
+            let bodyEnergy = creature.maxEnergy * 0.55
             foodSources.append(FoodSource(position: creature.position,
                                           energyValue: bodyEnergy,
                                           type: .corpse,
@@ -262,11 +262,11 @@ final class World {
     // MARK: - Nahrungswachstum
 
     private func growFood() {
-        let plantCount = foodSources.filter { $0.type == .plant }.count
-        let fillRatio  = Double(plantCount) / Double(maxFood)
-        let newItems   = Int((foodGrowthRate * (1.0 - fillRatio) * Double(maxFood)).rounded())
+        let fillRatio = Double(plantCount) / Double(maxFood)
+        let newItems  = Int((foodGrowthRate * (1.0 - fillRatio) * Double(maxFood)).rounded())
         for _ in 0..<max(0, newItems) {
             foodSources.append(FoodSource(position: terrainBiasedPosition()))
+            plantCount += 1
         }
     }
 
@@ -281,18 +281,13 @@ final class World {
     }
 
     private func decayFood() {
-        // Nährstoffkreislauf: Leichen und Kampfabfall zersetzen sich zu pflanzlicher Nahrung.
-        // Energie bleibt vollständig im System — sie wechselt nur die Form.
+        // Nährstoffkreislauf: Leichen zersetzen sich zu pflanzlicher Nahrung.
         for i in foodSources.indices {
             let food = foodSources[i]
-            let decayAge: Int
-            switch food.type {
-            case .plant:   continue
-            case .corpse:  decayAge = 600
-            case .waste:   decayAge = 200
-            }
-            guard tickCount - food.spawnedAt > decayAge else { continue }
+            guard food.type == .corpse else { continue }
+            guard tickCount - food.spawnedAt > 600 else { continue }
             foodSources[i] = FoodSource(position: food.position, type: .plant)
+            plantCount += 1
         }
     }
 

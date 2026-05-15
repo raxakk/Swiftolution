@@ -36,13 +36,24 @@ final class GameScene: SKScene {
     }
 
     private func drawTerrain(_ map: TerrainMap) {
+        let w = Int(size.width), h = Int(size.height)
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return }
+
         map.forEachCell { col, row, type in
-            let node = SKShapeNode(rect: map.cellRect(col: col, row: row))
-            node.fillColor   = type.color
-            node.strokeColor = .clear
-            node.zPosition   = -10
-            addChild(node)
+            if let c = type.color.usingColorSpace(.deviceRGB) { ctx.setFillColor(c.cgColor) }
+            ctx.fill(map.cellRect(col: col, row: row))
         }
+
+        guard let img = ctx.makeImage() else { return }
+        let node         = SKSpriteNode(texture: SKTexture(cgImage: img), size: size)
+        node.anchorPoint = .zero
+        node.position    = .zero
+        node.zPosition   = -10
+        addChild(node)
     }
 
     // MARK: - Update (von SimulationEngine aufgerufen — nur lesen, nicht verändern!)
@@ -68,10 +79,10 @@ final class GameScene: SKScene {
                 node.sync(with: creature)
             } else {
                 let node = CreatureNode(creature: creature)
+                node.setSelected(creature.id == selectedCreatureID)
                 addChild(node)
                 creatureNodes[creature.id] = node
             }
-            creatureNodes[creature.id]?.setSelected(creature.id == selectedCreatureID)
         }
     }
 
@@ -113,12 +124,8 @@ final class GameScene: SKScene {
                 radius = 2.5
                 color  = NSColor(red: 0.30, green: 0.85, blue: 0.40, alpha: 0.9)
             case .corpse:
-                // Radius skaliert mit Energiewert — große Tiere hinterlassen mehr
-                radius = min(CGFloat(food.energyValue / 10), 6)
+                radius = min(CGFloat(food.energyValue / 14), 7)
                 color  = NSColor(red: 0.75, green: 0.55, blue: 0.20, alpha: 0.85)
-            case .waste:
-                radius = 1.8
-                color  = NSColor(red: 0.80, green: 0.15, blue: 0.15, alpha: 0.70)
             }
             let node         = SKShapeNode(circleOfRadius: radius)
             node.fillColor   = color

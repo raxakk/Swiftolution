@@ -4,7 +4,6 @@ import CoreGraphics
 enum FoodType {
     case plant    // natürlich gewachsen — wächst logistisch nach
     case corpse   // Überreste eines gestorbenen Lebewesens — verfällt nach einiger Zeit
-    case waste    // Energie die beim Kampf "verspritzt" wird — verfällt schnell
 }
 
 struct FoodSource {
