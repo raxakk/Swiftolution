@@ -121,14 +121,14 @@ struct SensorInput {
     var ownEnergy:                 Float   // 0 = leer, 1 = voll
     var ownAge:                    Float   // 0 = neugeboren, 1 = maximales Alter
     var localDensity:              Float   // 0 = allein, 1 = sehr viele Artgenossen in der Nähe
-    var aggressionOfNearestCreature: Float // 0 = Pflanzenfresser, 1 = Fleischfresser
+    var approachVelocity:            Float   // >0 = Kreatur nähert sich, <0 = flieht, normiert [-1, +1]
     var nearestFoodType:           Float   // 0 = Pflanze, 1 = Leiche
     var currentTerrain:            Float   // 0 = Wüste, 0.5 = Grasland, 1 = Wald
     var avgNearbyHeading:          Float   // Ø Bewegungsrichtung der Nachbarn relativ zur eigenen [-1, +1]
 
     func toArray() -> [Float] {
         [angleToFood, distanceToFood, angleToCreature, distanceToCreature,
-         ownEnergy, ownAge, localDensity, aggressionOfNearestCreature,
+         ownEnergy, ownAge, localDensity, approachVelocity,
          nearestFoodType, currentTerrain, avgNearbyHeading]
     }
 }

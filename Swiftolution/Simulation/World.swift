@@ -103,16 +103,27 @@ final class World {
             nearestFoodType  = food.type == .corpse ? 1.0 : 0.0
         }
 
-        var angleToCreature:   Float = 0
-        var distToCreature:    Float = 1
-        var nearestAggression: Float = 0
+        var angleToCreature:  Float = 0
+        var distToCreature:   Float = 1
+        var approachVelocity: Float = 0
         if let other = nearestCreature(to: creature, within: creature.sightRadius) {
             let dx = Float(other.position.x - creature.position.x)
             let dy = Float(other.position.y - creature.position.y)
+            let dist = Float(distance(creature.position, other.position))
             let relAngle = normalizeAngle(atan2(dy, dx) - creature.heading)
-            angleToCreature   = relAngle / .pi
-            distToCreature    = Float(distance(creature.position, other.position)) / sightR
-            nearestAggression = other.dna.aggression
+            angleToCreature = relAngle / .pi
+            distToCreature  = dist / sightR
+
+            // Annäherungsgeschwindigkeit: Projektion der Geschwindigkeit von `other`
+            // auf den Vektor der von `other` auf `creature` zeigt (-dx, -dy).
+            // Positiv = nähert sich, negativ = flieht.
+            let otherSpeed = (other.lastAction?.speed ?? 0) * other.maxSpeed
+            let vx = cos(other.heading) * otherSpeed
+            let vy = sin(other.heading) * otherSpeed
+            if dist > 0 {
+                let approach = (vx * (-dx) + vy * (-dy)) / dist
+                approachVelocity = max(-1, min(1, approach / max(other.maxSpeed, 0.1)))
+            }
         }
 
         let densityRadius: CGFloat = 55
@@ -147,7 +158,7 @@ final class World {
             ownEnergy:                   creature.energy / creature.maxEnergy,
             ownAge:                      Float(creature.age) / Float(creature.dna.maxAge),
             localDensity:                localDensity,
-            aggressionOfNearestCreature: nearestAggression,
+            approachVelocity:            approachVelocity,
             nearestFoodType:             nearestFoodType,
             currentTerrain:              terrainValue,
             avgNearbyHeading:            avgNearbyHeading
