@@ -11,14 +11,16 @@ struct DNA {
     var sightRadius:          Float { genes[1] }
     var size:                 Float { genes[2] }
     var aggression:           Float { genes[3] }  // 0 = reiner Pflanzenfresser, 1 = reiner Fleischfresser
-    var maxAge:               Int   { max(1, Int(genes[4] * 1000)) }
+    var maxAge:                Int   { max(1, Int(genes[4] * 1000)) }
     var reproductionThreshold: Float { genes[5] }
+    var brainSize:             Float { genes[6] }   // [0,1] → minHiddenCount…maxHiddenCount Neuronen
+    var red:                   Float { genes[7] }
+    var green:                 Float { genes[8] }
+    var blue:                  Float { genes[9] }
+    // 0 = Wüstenangepasst (schnell+effizient in der Wüste), 1 = Waldangepasst (effizient im Wald)
+    var habitatPreference:     Float { genes[10] }
 
-    var red:   Float { genes[7] }
-    var green: Float { genes[8] }
-    var blue:  Float { genes[9] }
-
-    static let neuralWeightsStartIndex = 10
+    static let neuralWeightsStartIndex = 11
 
     static func totalLength(networkWeightCount: Int) -> Int {
         neuralWeightsStartIndex + networkWeightCount

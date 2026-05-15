@@ -15,7 +15,7 @@ final class SimulationEngine: ObservableObject {
 
     // MARK: - Private Properties
 
-    private var world  = World()
+    private var world  = World(size: CGSize(width: 2400, height: 1800))
     private var timer: AnyCancellable?
     private(set) var isPaused = false
     private var speedMultiplier: Double = 1.0
@@ -38,7 +38,7 @@ final class SimulationEngine: ObservableObject {
 
     func restart() {
         timer?.cancel()
-        world = World()
+        world = World(size: CGSize(width: config.worldWidth, height: config.worldHeight))
         syncConfigToWorld()
         world.populate(creatures: config.initialCreatures, food: config.initialFood)
         scene.reset(world: world)
@@ -67,7 +67,13 @@ final class SimulationEngine: ObservableObject {
     // MARK: - Config → World synchronisieren
 
     private func syncConfigToWorld() {
-        world.maxFood         = config.foodCapacity
+        // Nahrung und Population skalieren mit der Wurzel der Weltfläche relativ zur Referenzgröße (800×600).
+        // Wurzel statt linearer Skala: doppelte Fläche → ~1.4× mehr Kapazität (nicht 2×).
+        let area      = Double(world.size.width * world.size.height)
+        let refArea   = 800.0 * 600.0
+        let scale     = sqrt(area / refArea)
+        world.maxFood         = Int(Double(config.foodCapacity) * scale)
+        world.maxPopulation   = Int(300.0 * scale)
         world.foodGrowthRate  = config.foodGrowthRate
         world.mutationRate    = config.mutationRate
         world.mutationStrength = config.mutationStrength
@@ -115,14 +121,16 @@ final class SimulationEngine: ObservableObject {
 
 struct SimulationConfig {
     // Sofort wirksam (live)
-    var foodCapacity:     Int    = 250    // maximale Nahrungsmenge in der Welt
-    var foodGrowthRate:   Double = 0.03   // logistische Wachstumsrate pro Tick
-    var mutationRate:     Float  = 0.05   // Wahrscheinlichkeit einer Gen-Mutation
-    var mutationStrength: Float  = 0.10   // maximale Stärke einer Mutation
+    var foodCapacity:     Int    = 250
+    var foodGrowthRate:   Double = 0.03
+    var mutationRate:     Float  = 0.05
+    var mutationStrength: Float  = 0.10
 
     // Erst beim Neustart wirksam
-    var initialCreatures: Int = 50
-    var initialFood:      Int = 150
+    var worldWidth:       Int = 2400
+    var worldHeight:      Int = 1800
+    var initialCreatures: Int = 80
+    var initialFood:      Int = 250
 }
 
 // MARK: - Kreatur-Snapshot (für Inspektion)
@@ -138,6 +146,9 @@ struct CreatureSnapshot {
     let aggression:           Float
     let sightRadius:          Float
     let reproThreshold:       Float
+    let habitatPreference:    Float
+    let brainSize:            Float
+    let hiddenCount:          Int
     // Aktuelles NN-Verhalten
     let actionSpeed:          Float
     let actionReproduce:      Float
@@ -152,7 +163,10 @@ struct CreatureSnapshot {
         speed          = c.dna.speed
         aggression     = c.dna.aggression
         sightRadius    = c.dna.sightRadius
-        reproThreshold = c.dna.reproductionThreshold
+        reproThreshold    = c.dna.reproductionThreshold
+        habitatPreference = c.dna.habitatPreference
+        brainSize         = c.dna.brainSize
+        hiddenCount    = c.hiddenCount
         actionSpeed    = c.lastAction?.speed          ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
         actionAttack   = c.lastAction?.wantsToAttack  ?? 0

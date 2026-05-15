@@ -16,11 +16,12 @@ final class World {
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
-    let maxPopulation:    Int    = 300
+    var maxPopulation:    Int    = 300
 
-    private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
+    private lazy var grid    = SpatialGrid(cellSize: 80, worldSize: size)
+    private(set) lazy var terrain = TerrainMap(worldSize: size)
 
-    init(size: CGSize = CGSize(width: 800, height: 600)) {
+    init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
     }
 
@@ -53,11 +54,34 @@ final class World {
 
     private func moveCreatures() {
         for creature in creatures {
-            let input  = sense(for: creature)
-            let output = creature.brain.activate(inputs: input)
-            creature.apply(output: output, in: self)
+            let input      = sense(for: creature)
+            let output     = creature.brain.activate(inputs: input)
+            let t          = terrain.at(creature.position)
+            let speedMod   = terrainSpeedMod(t, pref: creature.dna.habitatPreference)
+            creature.apply(output: output, in: self, speedModifier: speedMod)
             creature.tick()
+            // Wüstenhitze trifft nicht-angepasste Lebewesen besonders hart
+            creature.energy -= terrainHeatCost(t, pref: creature.dna.habitatPreference)
         }
+    }
+
+    // Geschwindigkeitsmodifikator: Habitatpräferenz verschiebt Vor-/Nachteil je Terrain
+    private func terrainSpeedMod(_ t: TerrainType, pref: Float) -> Float {
+        switch t {
+        case .grassland: return 1.0
+        case .forest:
+            // Waldangepasst (pref=1): kaum Verlust (0.85×), unangepasst (pref=0): langsam (0.55×)
+            return 0.55 + pref * 0.30
+        case .desert:
+            // Wüstenangepasst (pref=0): schnell (1.15×), Waldangepasst (pref=1): trage (0.80×)
+            return 1.15 - pref * 0.35
+        }
+    }
+
+    // Extrakosten durch Wüstenhitze — bei Wüstenanpassung stark reduziert
+    private func terrainHeatCost(_ t: TerrainType, pref: Float) -> Float {
+        guard t == .desert else { return 0 }
+        return 0.03 + pref * 0.05   // pref=0 → 0.03/Tick, pref=1 → 0.08/Tick
     }
 
     // Baut den Sensor-Input für ein Lebewesen auf.
@@ -124,8 +148,9 @@ final class World {
 
             // Schaden abhängig von Größe und Aggression des Angreifers
             let rawDamage = (attacker.dna.size * 0.6 + attacker.dna.aggression * 0.4) * 50
-            // Verteidigung: Fleischfresser sind kampferfahrener — bis zu 50% Schadensreduktion
-            let defense = victim.dna.aggression * 0.5
+            // Verteidigung skaliert stark mit Aggression — Kannibalismus muss sich nicht lohnen.
+            // Bei aggr=0.8: Verteidigung=0.72 → Netto negativ. Bei aggr=0.1: 0.09 → Pflanzenfresser sind leichte Beute.
+            let defense = min(victim.dna.aggression * 0.9, 0.92)
             let damage  = rawDamage * (1 - defense)
 
             // Nur so viel stehlen wie das Opfer noch hat (nach bisher gesammelten Schäden)
@@ -133,7 +158,7 @@ final class World {
             let stolen = min(damage, max(0, victimCurrentEnergy))
 
             // Angriff kostet Energie — Jagd muss sich lohnen, sonst ist sie ruinös
-            energyDeltas[attacker.id, default: 0] -= attacker.dna.aggression * 5
+            energyDeltas[attacker.id, default: 0] -= attacker.dna.aggression * 6
             energyDeltas[attacker.id, default: 0] += stolen * 0.45
             energyDeltas[victim.id,   default: 0] -= stolen
 
@@ -237,14 +262,22 @@ final class World {
     // MARK: - Nahrungswachstum
 
     private func growFood() {
-        // Nur Pflanzennahrung zählt zur Kapazitätsgrenze —
-        // Leichen und Kampfabfall blockieren das Pflanzenwachstum nicht.
         let plantCount = foodSources.filter { $0.type == .plant }.count
         let fillRatio  = Double(plantCount) / Double(maxFood)
         let newItems   = Int((foodGrowthRate * (1.0 - fillRatio) * Double(maxFood)).rounded())
         for _ in 0..<max(0, newItems) {
-            foodSources.append(FoodSource(position: randomPosition()))
+            foodSources.append(FoodSource(position: terrainBiasedPosition()))
         }
+    }
+
+    // Nahrung wächst bevorzugt in nahrungsreichen Biotopen (Wald > Grasland > Wüste)
+    private func terrainBiasedPosition() -> CGPoint {
+        for _ in 0..<6 {
+            let pos = randomPosition()
+            let weight = terrain.at(pos).foodWeight
+            if Float.random(in: 0...1) < weight { return pos }
+        }
+        return randomPosition()
     }
 
     private func decayFood() {

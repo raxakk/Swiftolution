@@ -4,30 +4,36 @@ struct NeuralNetwork {
 
     // MARK: - Architektur
 
-    static let inputCount  = 8
-    static let hiddenCount = 8
-    static let outputCount = 4   // turnAngle, speed, wantsToReproduce, wantsToAttack
+    static let inputCount    = 8
+    static let minHiddenCount = 4
+    static let maxHiddenCount = 16
+    static let outputCount   = 4   // turnAngle, speed, wantsToReproduce, wantsToAttack
 
+    // DNA speichert immer Gewichte für maxHiddenCount — unabhängig von der tatsächlichen Gehirngröße.
+    // So bleibt die DNA-Länge konstant und Crossover funktioniert ohne Sonderbehandlung.
     static var totalWeightCount: Int {
-        let layer1 = inputCount * hiddenCount + hiddenCount
-        let layer2 = hiddenCount * outputCount + outputCount
+        let layer1 = inputCount * maxHiddenCount + maxHiddenCount
+        let layer2 = maxHiddenCount * outputCount + outputCount
         return layer1 + layer2
     }
 
     // MARK: - Gewichte
 
-    private var weightsInputHidden:  [[Float]]   // [hiddenCount][inputCount]
+    let hiddenCount: Int
+    private var weightsInputHidden:  [[Float]]
     private var biasHidden:          [Float]
-    private var weightsHiddenOutput: [[Float]]   // [outputCount][hiddenCount]
+    private var weightsHiddenOutput: [[Float]]
     private var biasOutput:          [Float]
 
     // MARK: - Init
 
-    init(weights: [Float]) {
+    init(weights: [Float], hiddenCount: Int) {
+        self.hiddenCount = max(NeuralNetwork.minHiddenCount,
+                               min(hiddenCount, NeuralNetwork.maxHiddenCount))
         guard weights.count >= NeuralNetwork.totalWeightCount else {
-            weightsInputHidden  = Array(repeating: Array(repeating: 0, count: NeuralNetwork.inputCount),  count: NeuralNetwork.hiddenCount)
-            biasHidden          = Array(repeating: 0, count: NeuralNetwork.hiddenCount)
-            weightsHiddenOutput = Array(repeating: Array(repeating: 0, count: NeuralNetwork.hiddenCount), count: NeuralNetwork.outputCount)
+            weightsInputHidden  = Array(repeating: Array(repeating: 0, count: NeuralNetwork.inputCount), count: self.hiddenCount)
+            biasHidden          = Array(repeating: 0, count: self.hiddenCount)
+            weightsHiddenOutput = Array(repeating: Array(repeating: 0, count: self.hiddenCount), count: NeuralNetwork.outputCount)
             biasOutput          = Array(repeating: 0, count: NeuralNetwork.outputCount)
             return
         }
@@ -41,7 +47,7 @@ struct NeuralNetwork {
         var wIH = [[Float]]()
         var bH  = [Float]()
 
-        for _ in 0..<NeuralNetwork.hiddenCount {
+        for _ in 0..<self.hiddenCount {
             wIH.append(weights[idx..<idx + NeuralNetwork.inputCount].map(w))
             idx += NeuralNetwork.inputCount
             bH.append(w(weights[idx]))
@@ -52,8 +58,8 @@ struct NeuralNetwork {
         var bO  = [Float]()
 
         for _ in 0..<NeuralNetwork.outputCount {
-            wHO.append(weights[idx..<idx + NeuralNetwork.hiddenCount].map(w))
-            idx += NeuralNetwork.hiddenCount
+            wHO.append(weights[idx..<idx + self.hiddenCount].map(w))
+            idx += self.hiddenCount
             bO.append(w(weights[idx]))
             idx += 1
         }

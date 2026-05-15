@@ -14,7 +14,7 @@ struct FoodSource {
     var type: FoodType
     let spawnedAt: Int   // Tick der Entstehung — für Verfall von corpse/waste
 
-    init(position: CGPoint, energyValue: Float = 25, type: FoodType = .plant, spawnedAt: Int = 0) {
+    init(position: CGPoint, energyValue: Float = 30, type: FoodType = .plant, spawnedAt: Int = 0) {
         self.position    = position
         self.energyValue = energyValue
         self.type        = type

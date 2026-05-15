@@ -27,6 +27,10 @@ final class Creature {
     var sightRadius:  CGFloat { CGFloat(dna.sightRadius * 120 + 40) }
     var attackRadius: CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
+    var hiddenCount:  Int     {
+        NeuralNetwork.minHiddenCount +
+        Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
+    }
     // Herbivoren sind schneller — in der Natur evolut Beute zur Flucht, Räuber zur Ausdauer.
     // aggression=0 → +20% Geschwindigkeit, aggression=1 → -20% Geschwindigkeit
     var maxSpeed:     Float   { dna.speed * 2.5 * (1.2 - dna.aggression * 0.4) + 0.3 }
@@ -43,7 +47,9 @@ final class Creature {
         self.dna      = dna
         self.position = position
         self.energy   = dna.size * 80 + 40
-        self.brain    = NeuralNetwork(weights: dna.neuralWeights())
+        let hc = NeuralNetwork.minHiddenCount +
+            Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
+        self.brain    = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: hc)
     }
 
     // MARK: - Tick
@@ -53,14 +59,13 @@ final class Creature {
         consumeEnergy()
     }
 
-    func apply(output: ActionOutput, in world: World) {
+    func apply(output: ActionOutput, in world: World, speedModifier: Float = 1.0) {
         lastAction = output
 
-        let maxTurnRate: Float = 0.2   // ~11° pro Tick
-        // sigmoid-Output [0,1] auf [-maxTurn, +maxTurn] mappen
+        let maxTurnRate: Float = 0.2
         heading += (output.turnAngle - 0.5) * 2 * maxTurnRate
 
-        let speed = output.speed * maxSpeed
+        let speed = output.speed * maxSpeed * speedModifier
         position.x += CGFloat(cos(heading) * speed)
         position.y += CGFloat(sin(heading) * speed)
 
@@ -81,10 +86,10 @@ final class Creature {
     private func consumeEnergy() {
         let baseCost:       Float = 0.08
         let sizeCost:       Float = dna.size * 0.06
-        // Kosten entstehen nur bei tatsächlicher Bewegung, nicht durch Potenzial
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025
         let aggressionCost: Float = dna.aggression * 0.09
-        energy -= baseCost + sizeCost + speedCost + aggressionCost
+        let brainCost:      Float = dna.brainSize * 0.02
+        energy -= baseCost + sizeCost + speedCost + aggressionCost + brainCost
     }
 }
 

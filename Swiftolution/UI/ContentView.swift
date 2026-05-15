@@ -146,15 +146,32 @@ struct SidebarView: View {
                 // MARK: Startbedingungen (gilt beim Neustart)
                 SidebarSection(title: "Start (nach Neustart)") {
                     ParamSlider(
+                        label: "Weltbreite",
+                        displayValue: "\(engine.config.worldWidth) px",
+                        value: Binding(
+                            get: { Double(engine.config.worldWidth) },
+                            set: { engine.config.worldWidth = Int($0) }
+                        ),
+                        range: 800...4800
+                    )
+                    ParamSlider(
+                        label: "Welthöhe",
+                        displayValue: "\(engine.config.worldHeight) px",
+                        value: Binding(
+                            get: { Double(engine.config.worldHeight) },
+                            set: { engine.config.worldHeight = Int($0) }
+                        ),
+                        range: 600...3600
+                    )
+                    ParamSlider(
                         label: "Startpopulation",
                         displayValue: "\(engine.config.initialCreatures)",
                         value: Binding(
                             get: { Double(engine.config.initialCreatures) },
                             set: { engine.config.initialCreatures = Int($0) }
                         ),
-                        range: 10...150
+                        range: 10...300
                     )
-
                     ParamSlider(
                         label: "Startnahrung",
                         displayValue: "\(engine.config.initialFood)",
@@ -162,7 +179,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.initialFood) },
                             set: { engine.config.initialFood = Int($0) }
                         ),
-                        range: 20...400
+                        range: 50...800
                     )
                 }
 

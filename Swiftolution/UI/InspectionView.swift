@@ -35,6 +35,13 @@ struct InspectionView: View {
             TraitBar(label: "Aggression",       value: snapshot.aggression,     color: .red)
             TraitBar(label: "Sichtweite",       value: snapshot.sightRadius,    color: .purple)
             TraitBar(label: "Fortpfl.-Schwelle", value: snapshot.reproThreshold, color: .teal)
+            TraitBar(label: "Habitat",           value: snapshot.habitatPreference, color: .brown,
+                     displayOverride: snapshot.habitatPreference < 0.35 ? "Wüste"
+                                    : snapshot.habitatPreference > 0.65 ? "Wald" : "Generalist")
+            TraitBar(label: "Gehirngröße",
+                     value: snapshot.brainSize,
+                     color: .indigo,
+                     displayOverride: "\(snapshot.hiddenCount) Neuronen")
 
             Divider()
 
@@ -61,13 +68,14 @@ private struct TraitBar: View {
     let label: String
     let value: Float
     let color: Color
+    var displayOverride: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(label).font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Text(String(format: "%.2f", value)).font(.caption2.monospacedDigit())
+                Text(displayOverride ?? String(format: "%.2f", value)).font(.caption2.monospacedDigit())
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {

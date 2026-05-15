@@ -21,10 +21,11 @@ final class GameScene: SKScene {
     // MARK: - Setup
 
     func setup(world: World) {
-        size       = world.size
-        scaleMode  = .aspectFit
+        size        = world.size
+        scaleMode   = .aspectFit
         anchorPoint = .zero
         backgroundColor = NSColor(red: 0.06, green: 0.07, blue: 0.10, alpha: 1)
+        drawTerrain(world.terrain)
     }
 
     func reset(world: World) {
@@ -32,6 +33,16 @@ final class GameScene: SKScene {
         creatureNodes.removeAll()
         foodNodes.removeAll()
         setup(world: world)
+    }
+
+    private func drawTerrain(_ map: TerrainMap) {
+        map.forEachCell { col, row, type in
+            let node = SKShapeNode(rect: map.cellRect(col: col, row: row))
+            node.fillColor   = type.color
+            node.strokeColor = .clear
+            node.zPosition   = -10
+            addChild(node)
+        }
     }
 
     // MARK: - Update (von SimulationEngine aufgerufen — nur lesen, nicht verändern!)
