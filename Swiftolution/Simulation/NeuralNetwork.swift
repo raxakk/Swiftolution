@@ -4,7 +4,7 @@ struct NeuralNetwork {
 
     // MARK: - Architektur
 
-    static let inputCount  = 6
+    static let inputCount  = 8
     static let hiddenCount = 8
     static let outputCount = 4   // turnAngle, speed, wantsToReproduce, wantsToAttack
 
@@ -108,15 +108,18 @@ struct NeuralNetwork {
 // MARK: - Sensor-Daten (Inputs)
 
 struct SensorInput {
-    var angleToFood:         Float   // -1 (links) bis +1 (rechts), relativ zur Blickrichtung
-    var distanceToFood:      Float   // 0 = direkt daneben, 1 = Rand des Sichtradius
-    var angleToCreature:     Float
-    var distanceToCreature:  Float
-    var ownEnergy:           Float   // 0 = leer, 1 = voll
-    var ownAge:              Float   // 0 = neugeboren, 1 = maximales Alter
+    var angleToFood:               Float   // -1 (links) bis +1 (rechts), relativ zur Blickrichtung
+    var distanceToFood:            Float   // 0 = direkt daneben, 1 = Rand des Sichtradius
+    var angleToCreature:           Float
+    var distanceToCreature:        Float
+    var ownEnergy:                 Float   // 0 = leer, 1 = voll
+    var ownAge:                    Float   // 0 = neugeboren, 1 = maximales Alter
+    var localDensity:              Float   // 0 = allein, 1 = sehr viele Artgenossen in der Nähe
+    var aggressionOfNearestCreature: Float // 0 = Pflanzenfresser, 1 = Fleischfresser — ermöglicht Beuteerkennung
 
     func toArray() -> [Float] {
-        [angleToFood, distanceToFood, angleToCreature, distanceToCreature, ownEnergy, ownAge]
+        [angleToFood, distanceToFood, angleToCreature, distanceToCreature,
+         ownEnergy, ownAge, localDensity, aggressionOfNearestCreature]
     }
 }
 

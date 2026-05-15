@@ -5,15 +5,23 @@ struct ContentView: View {
     @StateObject private var engine = SimulationEngine()
 
     var body: some View {
-        HStack(spacing: 0) {
-            SimulationView(scene: engine.scene)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                SimulationView(scene: engine.scene)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+
+                Divider()
+
+                SidebarView(engine: engine)
+                    .frame(width: 230)
+            }
 
             Divider()
 
-            SidebarView(engine: engine)
-                .frame(width: 230)
+            ChartsPanel(tracker: engine.tracker)
+                .frame(height: 190)
+                .background(Color(NSColor.windowBackgroundColor))
         }
     }
 }
@@ -48,14 +56,23 @@ struct SidebarView: View {
                     .font(.headline)
                     .padding(.bottom, 2)
 
+                // MARK: Kreatur-Inspektion
+                if let snapshot = engine.inspectedCreature {
+                    SidebarSection(title: "Ausgewählte Kreatur") {
+                        InspectionView(snapshot: snapshot)
+                    }
+                }
+
                 // MARK: Statistiken
                 SidebarSection(title: "Statistiken") {
-                    StatRow(label: "Generation",  value: "\(engine.stats.generation)")
-                    StatRow(label: "Population",  value: "\(engine.stats.population)")
-                    StatRow(label: "Geburten",    value: "\(engine.stats.totalBirths)")
-                    StatRow(label: "Nahrung",     value: "\(engine.stats.foodCount) / \(engine.config.foodCapacity)")
-                    StatRow(label: "Ältestes",    value: "\(engine.stats.oldestAge) Ticks")
-                    StatRow(label: "Ø Energie",   value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
+                    StatRow(label: "Generation",      value: "\(engine.stats.generation)")
+                    StatRow(label: "Population",      value: "\(engine.stats.population)")
+                    StatRow(label: "Pflanzenfresser", value: "\(engine.stats.herbivores)")
+                    StatRow(label: "Fleischfresser",  value: "\(engine.stats.carnivores)")
+                    StatRow(label: "Geburten",        value: "\(engine.stats.totalBirths)")
+                    StatRow(label: "Pflanzen",        value: "\(engine.stats.foodCount) / \(engine.config.foodCapacity)")
+                    StatRow(label: "Ältestes",        value: "\(engine.stats.oldestAge) Ticks")
+                    StatRow(label: "Ø Energie",       value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
                 }
 
                 // MARK: Steuerung

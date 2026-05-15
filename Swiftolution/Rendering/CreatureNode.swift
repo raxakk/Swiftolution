@@ -7,11 +7,14 @@ final class CreatureNode: SKNode {
     private let bodyNode:      SKShapeNode
     private let sightNode:     SKShapeNode
     private let directionLine: SKShapeNode
+    private let selectionRing: SKShapeNode
+    let radius: CGFloat
 
     // MARK: - Init
 
     init(creature: Creature) {
         let radius = CGFloat(creature.dna.size * 8 + 4)
+        self.radius = radius
         let aggr   = CGFloat(creature.dna.aggression)
 
         // Körperfarbe aus DNA + Aggressions-Tint (grün → rot)
@@ -45,6 +48,13 @@ final class CreatureNode: SKNode {
         sightNode.lineWidth   = 0.5
         sightNode.isHidden    = true
 
+        // Auswahlring — standardmäßig versteckt
+        selectionRing             = SKShapeNode(circleOfRadius: radius + 5)
+        selectionRing.fillColor   = .clear
+        selectionRing.strokeColor = .white.withAlphaComponent(0.9)
+        selectionRing.lineWidth   = 1.5
+        selectionRing.isHidden    = true
+
         // Richtungslinie: bei Fleischfressern zeigt die Spitze schon die Richtung → ausblenden
         let linePath = CGMutablePath()
         linePath.move(to: .zero)
@@ -55,6 +65,7 @@ final class CreatureNode: SKNode {
 
         super.init()
         addChild(sightNode)
+        addChild(selectionRing)
         addChild(bodyNode)
         addChild(directionLine)
 
@@ -71,6 +82,11 @@ final class CreatureNode: SKNode {
 
         let energyRatio = CGFloat(creature.energy / creature.maxEnergy)
         bodyNode.alpha = 0.35 + energyRatio * 0.65
+    }
+
+    func setSelected(_ selected: Bool) {
+        selectionRing.isHidden = !selected
+        sightNode.isHidden     = !selected
     }
 
     func showSightRadius(_ visible: Bool) {

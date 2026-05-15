@@ -5,11 +5,13 @@ final class SimulationEngine: ObservableObject {
 
     // MARK: - Öffentliche Properties
 
-    @Published var stats  = SimulationStats()
-    @Published var config = SimulationConfig() {
-        didSet { syncConfigToWorld() }
-    }
-    let scene = GameScene()
+    @Published var stats              = SimulationStats()
+    @Published var config             = SimulationConfig() { didSet { syncConfigToWorld() } }
+    @Published var inspectedCreature: CreatureSnapshot?
+    let scene   = GameScene()
+    let tracker = StatisticsTracker()
+
+    private var selectedCreatureID: UUID?
 
     // MARK: - Private Properties
 
@@ -24,6 +26,7 @@ final class SimulationEngine: ObservableObject {
         syncConfigToWorld()
         world.populate(creatures: config.initialCreatures, food: config.initialFood)
         scene.setup(world: world)
+        scene.onCreatureSelected = { [weak self] id in self?.selectCreature(id: id) }
         startTimer()
     }
 
@@ -40,7 +43,19 @@ final class SimulationEngine: ObservableObject {
         world.populate(creatures: config.initialCreatures, food: config.initialFood)
         scene.reset(world: world)
         stats = SimulationStats()
+        tracker.reset()
+        selectCreature(id: nil)
         startTimer()
+    }
+
+    func selectCreature(id: UUID?) {
+        selectedCreatureID       = id
+        scene.selectedCreatureID = id
+        if let id, let creature = world.creatures.first(where: { $0.id == id }) {
+            inspectedCreature = CreatureSnapshot(creature)
+        } else {
+            inspectedCreature = nil
+        }
     }
 
     func setSpeed(_ multiplier: Double) {
@@ -72,16 +87,27 @@ final class SimulationEngine: ObservableObject {
         world.tick()
         scene.update(world: world)
         updateStats()
+        tracker.update(world: world)
     }
 
     private func updateStats() {
+        let creatures       = world.creatures
         stats.generation    = world.generation
-        stats.population    = world.creatures.count
+        stats.population    = creatures.count
+        stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.45 }.count
+        stats.carnivores    = creatures.filter { $0.dna.aggression  > 0.45 }.count
         stats.totalBirths   = world.totalBirths
-        stats.foodCount     = world.foodSources.count
-        stats.oldestAge     = world.creatures.map { $0.age }.max() ?? 0
-        let energies        = world.creatures.map { Double($0.energy / $0.maxEnergy) }
+        stats.foodCount     = world.foodSources.filter { $0.type == .plant }.count
+        stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
+        let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
         stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)
+
+        if let id = selectedCreatureID,
+           let creature = creatures.first(where: { $0.id == id }) {
+            inspectedCreature = CreatureSnapshot(creature)
+        } else if selectedCreatureID != nil {
+            selectCreature(id: nil)   // Kreatur gestorben
+        }
     }
 }
 
@@ -99,11 +125,47 @@ struct SimulationConfig {
     var initialFood:      Int = 150
 }
 
+// MARK: - Kreatur-Snapshot (für Inspektion)
+
+struct CreatureSnapshot {
+    let age:                  Int
+    let maxAge:               Int
+    let energyRatio:          Float
+    let isHerbivore:          Bool
+    // DNA
+    let size:                 Float
+    let speed:                Float
+    let aggression:           Float
+    let sightRadius:          Float
+    let reproThreshold:       Float
+    // Aktuelles NN-Verhalten
+    let actionSpeed:          Float
+    let actionReproduce:      Float
+    let actionAttack:         Float
+
+    init(_ c: Creature) {
+        age            = c.age
+        maxAge         = c.dna.maxAge
+        energyRatio    = max(0, min(c.energy / c.maxEnergy, 1))
+        isHerbivore    = c.dna.aggression <= 0.45
+        size           = c.dna.size
+        speed          = c.dna.speed
+        aggression     = c.dna.aggression
+        sightRadius    = c.dna.sightRadius
+        reproThreshold = c.dna.reproductionThreshold
+        actionSpeed    = c.lastAction?.speed          ?? 0
+        actionReproduce = c.lastAction?.wantsToReproduce ?? 0
+        actionAttack   = c.lastAction?.wantsToAttack  ?? 0
+    }
+}
+
 // MARK: - Statistiken
 
 struct SimulationStats {
     var generation:    Int    = 0
     var population:    Int    = 0
+    var herbivores:    Int    = 0
+    var carnivores:    Int    = 0
     var totalBirths:   Int    = 0
     var foodCount:     Int    = 0
     var oldestAge:     Int    = 0

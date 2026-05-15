@@ -7,6 +7,17 @@ final class GameScene: SKScene {
     private var creatureNodes: [UUID: CreatureNode] = [:]
     private var foodNodes:     [UUID: SKShapeNode]  = [:]
 
+    // MARK: - Selektion
+
+    var selectedCreatureID: UUID? {
+        didSet {
+            for (id, node) in creatureNodes {
+                node.setSelected(id == selectedCreatureID)
+            }
+        }
+    }
+    var onCreatureSelected: ((UUID?) -> Void)?
+
     // MARK: - Setup
 
     func setup(world: World) {
@@ -49,7 +60,27 @@ final class GameScene: SKScene {
                 addChild(node)
                 creatureNodes[creature.id] = node
             }
+            creatureNodes[creature.id]?.setSelected(creature.id == selectedCreatureID)
         }
+    }
+
+    // MARK: - Maus
+
+    override func mouseDown(with event: NSEvent) {
+        let loc = event.location(in: self)
+        var nearestID:   UUID?    = nil
+        var nearestDist: CGFloat  = 20   // Klick-Toleranz in Pixeln
+
+        for (id, node) in creatureNodes {
+            let d = hypot(node.position.x - loc.x, node.position.y - loc.y)
+            if d < node.radius + 6 && d < nearestDist {
+                nearestID   = id
+                nearestDist = d
+            }
+        }
+
+        selectedCreatureID = nearestID
+        onCreatureSelected?(nearestID)
     }
 
     // MARK: - Nahrung
@@ -64,12 +95,26 @@ final class GameScene: SKScene {
 
         // Neue hinzufügen
         for food in foods where foodNodes[food.id] == nil {
-            let node             = SKShapeNode(circleOfRadius: 2.5)
-            node.fillColor       = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.9)
-            node.strokeColor     = .clear
-            node.position        = food.position
+            let radius: CGFloat
+            let color: NSColor
+            switch food.type {
+            case .plant:
+                radius = 2.5
+                color  = NSColor(red: 0.30, green: 0.85, blue: 0.40, alpha: 0.9)
+            case .corpse:
+                // Radius skaliert mit Energiewert — große Tiere hinterlassen mehr
+                radius = min(CGFloat(food.energyValue / 10), 6)
+                color  = NSColor(red: 0.75, green: 0.55, blue: 0.20, alpha: 0.85)
+            case .waste:
+                radius = 1.8
+                color  = NSColor(red: 0.80, green: 0.15, blue: 0.15, alpha: 0.70)
+            }
+            let node         = SKShapeNode(circleOfRadius: radius)
+            node.fillColor   = color
+            node.strokeColor = .clear
+            node.position    = food.position
             addChild(node)
-            foodNodes[food.id]   = node
+            foodNodes[food.id] = node
         }
     }
 }

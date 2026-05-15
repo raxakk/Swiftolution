@@ -27,7 +27,9 @@ final class Creature {
     var sightRadius:  CGFloat { CGFloat(dna.sightRadius * 120 + 40) }
     var attackRadius: CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
-    var maxSpeed:     Float   { dna.speed * 2.5 + 0.3 }
+    // Herbivoren sind schneller — in der Natur evolut Beute zur Flucht, Räuber zur Ausdauer.
+    // aggression=0 → +20% Geschwindigkeit, aggression=1 → -20% Geschwindigkeit
+    var maxSpeed:     Float   { dna.speed * 2.5 * (1.2 - dna.aggression * 0.4) + 0.3 }
 
     var canReproduce: Bool {
         // reproductionThreshold-Gen [0,1] skaliert auf 55%–85% der maximalen Energie
@@ -68,20 +70,20 @@ final class Creature {
     }
 
     func eat(food: FoodSource) {
-        // Fleischfresser sind schlecht darin Pflanzen zu verdauen — echter Trade-off.
-        // aggression=0 → 100% Effizienz, aggression=1 → 30% Effizienz
-        let digestibility = 1.0 - dna.aggression * 0.7
+        // Pflanzenfresser verdauen Pflanzen gut, Fleischfresser schlecht.
+        // Leichen und Kampfabfall verdaut jeder gleich gut — Fleisch ist Fleisch.
+        let digestibility: Float = food.type == .plant ? (1.0 - dna.aggression * 0.7) : 1.0
         energy = min(energy + food.energyValue * digestibility, maxEnergy)
     }
 
     // MARK: - Privates
 
     private func consumeEnergy() {
-        // Größere, schnellere und aggressivere Lebewesen verbrauchen mehr Energie
         let baseCost:       Float = 0.08
         let sizeCost:       Float = dna.size * 0.06
-        let speedCost:      Float = dna.speed * 0.04
-        let aggressionCost: Float = dna.aggression * 0.18   // Aggression ist teuer: nur rentabel wenn genug Beute vorhanden
+        // Kosten entstehen nur bei tatsächlicher Bewegung, nicht durch Potenzial
+        let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025
+        let aggressionCost: Float = dna.aggression * 0.09
         energy -= baseCost + sizeCost + speedCost + aggressionCost
     }
 }
