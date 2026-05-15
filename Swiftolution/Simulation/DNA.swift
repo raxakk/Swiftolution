@@ -39,10 +39,20 @@ struct DNA {
     func mutated(rate: Float = 0.05, strength: Float = 0.1) -> DNA {
         var newGenes = genes
         for i in newGenes.indices {
-            if Float.random(in: 0...1) < rate {
-                newGenes[i] += Float.random(in: -strength...strength)
-                newGenes[i] = max(0, min(1, newGenes[i]))
+            guard Float.random(in: 0...1) < rate else { continue }
+            let roll = Float.random(in: 0...1)
+            let delta: Float
+            if roll < 0.01 {
+                // 1 %: Makro-Mutation — springt in neue Strategie-Region
+                delta = Float.random(in: -strength * 5 ... strength * 5)
+            } else if roll < 0.05 {
+                // 4 %: Mittlere Mutation — erkundet breiteren Bereich
+                delta = Float.random(in: -strength * 2 ... strength * 2)
+            } else {
+                // 95 %: Mikro-Mutation — feines Tuning
+                delta = Float.random(in: -strength...strength)
             }
+            newGenes[i] = max(0, min(1, newGenes[i] + delta))
         }
         return DNA(genes: newGenes)
     }
