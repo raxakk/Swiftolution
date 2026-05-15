@@ -204,7 +204,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.initialCreatures) },
                             set: { engine.config.initialCreatures = Int($0) }
                         ),
-                        range: 10...300
+                        range: 10...1000
                     )
                     ParamSlider(
                         label: "Startnahrung",

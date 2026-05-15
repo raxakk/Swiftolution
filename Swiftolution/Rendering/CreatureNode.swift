@@ -4,10 +4,10 @@ final class CreatureNode: SKNode {
 
     // MARK: - Kinder
 
-    private let bodyNode:      SKShapeNode
-    private let sightNode:     SKShapeNode
-    private let directionLine: SKShapeNode
-    private let selectionRing: SKShapeNode
+    private let bodySprite:    SKSpriteNode   // vorab gerendert → keine SKShapeNode-Rasterisierung pro Frame
+    private let directionLine: SKSpriteNode   // einfaches Rechteck
+    private let sightNode:     SKShapeNode    // nur bei Selektion sichtbar
+    private let selectionRing: SKShapeNode    // nur bei Selektion sichtbar
     let radius: CGFloat
 
     // MARK: - Init
@@ -34,39 +34,39 @@ final class CreatureNode: SKNode {
         let innerR    = radius * (0.88 - aggr * 0.66)
         let bodyPath  = CreatureNode.spikePath(outerRadius: radius, innerRadius: innerR, spikes: numSpikes)
 
-        bodyNode             = SKShapeNode(path: bodyPath)
-        bodyNode.fillColor   = bodyColor
-        bodyNode.strokeColor = NSColor(red: 0.3 + aggr * 0.7,
-                                       green: 0.55 * (1 - aggr),
-                                       blue:  0.25 * (1 - aggr), alpha: 1)
-        bodyNode.lineWidth   = 1.0 + aggr * 3.0
+        let strokeColor = NSColor(red: 0.3 + aggr * 0.7,
+                                  green: 0.55 * (1 - aggr),
+                                  blue:  0.25 * (1 - aggr), alpha: 1)
+        let lineWidth: CGFloat = 1.0 + aggr * 3.0
+        bodySprite = CreatureNode.makeBodySprite(path: bodyPath,
+                                                 fill: bodyColor,
+                                                 stroke: strokeColor,
+                                                 lineWidth: lineWidth,
+                                                 radius: radius)
 
-        // Sichtradius-Ring
+        // Richtungslinie als einfaches Rechteck — kein Pfad-Rasterizer nötig
+        let lineAlpha = max(0, 0.7 - aggr * 1.4)
+        directionLine = SKSpriteNode(color: NSColor.white.withAlphaComponent(lineAlpha),
+                                     size: CGSize(width: radius + 5, height: 1.5))
+        directionLine.anchorPoint = CGPoint(x: 0, y: 0.5)
+
+        // Sichtradius-Ring und Auswahlring — nur bei Selektion sichtbar
         sightNode             = SKShapeNode(circleOfRadius: creature.sightRadius)
         sightNode.fillColor   = .clear
         sightNode.strokeColor = bodyColor.withAlphaComponent(0.18)
         sightNode.lineWidth   = 0.5
         sightNode.isHidden    = true
 
-        // Auswahlring — standardmäßig versteckt
         selectionRing             = SKShapeNode(circleOfRadius: radius + 5)
         selectionRing.fillColor   = .clear
         selectionRing.strokeColor = .white.withAlphaComponent(0.9)
         selectionRing.lineWidth   = 1.5
         selectionRing.isHidden    = true
 
-        // Richtungslinie: bei Fleischfressern zeigt die Spitze schon die Richtung → ausblenden
-        let linePath = CGMutablePath()
-        linePath.move(to: .zero)
-        linePath.addLine(to: CGPoint(x: radius + 5, y: 0))
-        directionLine             = SKShapeNode(path: linePath)
-        directionLine.strokeColor = .white.withAlphaComponent(max(0, 0.7 - aggr * 1.4))
-        directionLine.lineWidth   = 1.5
-
         super.init()
         addChild(sightNode)
         addChild(selectionRing)
-        addChild(bodyNode)
+        addChild(bodySprite)
         addChild(directionLine)
 
         position = creature.position
@@ -79,9 +79,7 @@ final class CreatureNode: SKNode {
     func sync(with creature: Creature) {
         position  = creature.position
         zRotation = CGFloat(creature.heading)
-
-        let energyRatio = CGFloat(creature.energy / creature.maxEnergy)
-        bodyNode.alpha = 0.35 + energyRatio * 0.65
+        bodySprite.alpha = 0.35 + CGFloat(creature.energy / creature.maxEnergy) * 0.65
     }
 
     func setSelected(_ selected: Bool) {
@@ -91,6 +89,35 @@ final class CreatureNode: SKNode {
 
     func showSightRadius(_ visible: Bool) {
         sightNode.isHidden = !visible
+    }
+
+    // MARK: - Texture-Generator
+
+    // Rendert den Körperpfad einmalig in eine GPU-Textur — ersetzt per-Frame SKShapeNode-Rasterisierung.
+    private static func makeBodySprite(path: CGPath, fill: NSColor, stroke: NSColor,
+                                       lineWidth: CGFloat, radius: CGFloat) -> SKSpriteNode {
+        let margin  = lineWidth / 2 + 1
+        let texSize = Int((radius + margin) * 2) + 2
+        guard let ctx = CGContext(data: nil, width: texSize, height: texSize,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return SKSpriteNode() }
+
+        ctx.translateBy(x: CGFloat(texSize) / 2, y: CGFloat(texSize) / 2)
+
+        if let c = fill.usingColorSpace(.deviceRGB)   { ctx.setFillColor(c.cgColor) }
+        ctx.addPath(path)
+        ctx.fillPath()
+
+        ctx.setLineWidth(lineWidth)
+        if let c = stroke.usingColorSpace(.deviceRGB) { ctx.setStrokeColor(c.cgColor) }
+        ctx.addPath(path)
+        ctx.strokePath()
+
+        guard let img = ctx.makeImage() else { return SKSpriteNode() }
+        let size = CGSize(width: texSize, height: texSize)
+        return SKSpriteNode(texture: SKTexture(cgImage: img), size: size)
     }
 
     // MARK: - Form-Generator

@@ -22,6 +22,10 @@ final class SimulationEngine: ObservableObject {
     private var speedMultiplier: Double = 1.0
     private var tickAccumulator: Double = 0
 
+    // Simulation läuft auf einem eigenen Thread — Main bleibt für UI/Rendering frei
+    private let simQueue = DispatchQueue(label: "swiftolution.simulation", qos: .userInteractive)
+    private var simBusy  = false
+
     // MARK: - Lifecycle
 
     init() {
@@ -53,10 +57,19 @@ final class SimulationEngine: ObservableObject {
     func selectCreature(id: UUID?) {
         selectedCreatureID       = id
         scene.selectedCreatureID = id
-        if let id, let creature = world.creatures.first(where: { $0.id == id }) {
+        // Kein Zugriff auf world.creatures während simQueue läuft — updateStats() holt es nach
+        guard !simBusy else { return }
+        refreshInspection()
+    }
+
+    private func refreshInspection() {
+        if let id = selectedCreatureID,
+           let creature = world.creatures.first(where: { $0.id == id }) {
             inspectedCreature = CreatureSnapshot(creature)
-        } else {
+        } else if selectedCreatureID != nil {
             inspectedCreature = nil
+            selectedCreatureID = nil
+            scene.selectedCreatureID = nil
         }
     }
 
@@ -74,7 +87,8 @@ final class SimulationEngine: ObservableObject {
         let refArea   = 800.0 * 600.0
         let scale     = sqrt(area / refArea)
         world.maxFood          = Int(Double(config.foodCapacity) * scale)
-        world.maxPopulation    = Int(300.0 * scale)
+        // Populationsgrenze skaliert mit Weltgröße, ist aber mindestens so groß wie die Startzahl
+        world.maxPopulation    = max(Int(300.0 * scale), config.initialCreatures)
         world.foodGrowthRate   = config.foodGrowthRate
         world.mutationRate     = config.mutationRate
         world.mutationStrength = config.mutationStrength
@@ -94,18 +108,23 @@ final class SimulationEngine: ObservableObject {
     }
 
     private func tick() {
-        guard !isPaused else { return }
-        // Wie viele Simulations-Ticks in diesem Frame fällig sind
+        guard !isPaused, !simBusy else { return }
         tickAccumulator += 30.0 * speedMultiplier / 60.0
         let n = Int(tickAccumulator)
         tickAccumulator -= Double(n)
-        for _ in 0..<n {
-            world.tick()
-            tracker.update(world: world)
-        }
         guard n > 0 else { return }
-        scene.update(world: world)
-        updateStats()
+
+        simBusy = true
+        simQueue.async { [weak self] in
+            guard let self else { return }
+            for _ in 0..<n { self.world.tick() }
+            DispatchQueue.main.async {
+                self.tracker.update(world: self.world)
+                self.scene.update(world: self.world)
+                self.updateStats()
+                self.simBusy = false
+            }
+        }
     }
 
     private func updateStats() {
@@ -117,19 +136,13 @@ final class SimulationEngine: ObservableObject {
         stats.carnivores    = creatures.filter { $0.dna.aggression  > 0.45 }.count
         stats.totalBirths   = world.totalBirths
         stats.plantCount    = world.plantCount
-        stats.corpseCount   = world.foodSources.filter { $0.type == .corpse }.count
+        stats.corpseCount   = world.corpseCount
         stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
         let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
         stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)
         stats.currentSeason = world.currentSeasonName
         stats.seasonFactor  = world.currentSeasonFactor
-
-        if let id = selectedCreatureID,
-           let creature = creatures.first(where: { $0.id == id }) {
-            inspectedCreature = CreatureSnapshot(creature)
-        } else if selectedCreatureID != nil {
-            selectCreature(id: nil)   // Kreatur gestorben
-        }
+        refreshInspection()
     }
 }
 

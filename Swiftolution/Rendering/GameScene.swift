@@ -1,11 +1,34 @@
 import SpriteKit
 
+// MARK: - Geteilte Texturen (einmalig gerendert, dann GPU-gecacht)
+
+private enum SharedTextures {
+    static let plant:  SKTexture = makeCircle(radius: 2.5,
+        color: NSColor(red: 0.30, green: 0.85, blue: 0.40, alpha: 0.9))
+    static let corpse: SKTexture = makeCircle(radius: 7,
+        color: NSColor(red: 0.75, green: 0.55, blue: 0.20, alpha: 0.85))
+
+    private static func makeCircle(radius: CGFloat, color: NSColor) -> SKTexture {
+        let size = max(1, Int((radius + 1) * 2))
+        guard let ctx = CGContext(data: nil, width: size, height: size,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let c = color.usingColorSpace(.deviceRGB) else { return SKTexture() }
+        ctx.translateBy(x: CGFloat(size) / 2, y: CGFloat(size) / 2)
+        ctx.setFillColor(c.cgColor)
+        ctx.fillEllipse(in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
+        guard let img = ctx.makeImage() else { return SKTexture() }
+        return SKTexture(cgImage: img)
+    }
+}
+
 final class GameScene: SKScene {
 
     // MARK: - Node-Pool
 
     private var creatureNodes: [UUID: CreatureNode] = [:]
-    private var foodNodes:     [UUID: SKShapeNode]  = [:]
+    private var foodNodes:     [UUID: SKSpriteNode] = [:]
 
     // MARK: - Selektion
 
@@ -93,22 +116,18 @@ final class GameScene: SKScene {
             foodNodes.removeValue(forKey: id)?.removeFromParent()
         }
 
-        // Neue hinzufügen
+        // Neue hinzufügen — alle Pflanzen teilen sich eine Textur → ein GPU-Draw-Call
         for food in foods where foodNodes[food.id] == nil {
-            let radius: CGFloat
-            let color: NSColor
+            let node: SKSpriteNode
             switch food.type {
             case .plant:
-                radius = 2.5
-                color  = NSColor(red: 0.30, green: 0.85, blue: 0.40, alpha: 0.9)
+                node = SKSpriteNode(texture: SharedTextures.plant)
             case .corpse:
-                radius = min(CGFloat(food.energyValue / 14), 7)
-                color  = NSColor(red: 0.75, green: 0.55, blue: 0.20, alpha: 0.85)
+                let diameter = min(CGFloat(food.energyValue / 14), 7) * 2
+                node = SKSpriteNode(texture: SharedTextures.corpse,
+                                    size: CGSize(width: diameter, height: diameter))
             }
-            let node         = SKShapeNode(circleOfRadius: radius)
-            node.fillColor   = color
-            node.strokeColor = .clear
-            node.position    = food.position
+            node.position = food.position
             addChild(node)
             foodNodes[food.id] = node
         }

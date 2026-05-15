@@ -12,7 +12,8 @@ final class World {
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
-    private(set) var plantCount: Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
+    private(set) var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
+    private(set) var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -53,12 +54,18 @@ final class World {
 
     func populate(creatures creatureCount: Int, food foodCount: Int) {
         for _ in 0..<creatureCount {
-            creatures.append(Creature(dna: DNA.random(), position: randomPosition()))
+            var dna = DNA.random()
+            // 80% Pflanzenfresser als Startpopulation — Fleischfresser sollen durch Evolution entstehen
+            if Float.random(in: 0...1) < 0.8 {
+                dna.genes[3] = Float.random(in: 0...0.4)
+            }
+            creatures.append(Creature(dna: dna, position: randomPosition()))
         }
         for _ in 0..<foodCount {
             foodSources.append(FoodSource(position: randomPosition()))
         }
-        plantCount = foodCount   // Startnahrung sind alles Pflanzen
+        plantCount  = foodCount   // Startnahrung sind alles Pflanzen
+        corpseCount = 0
     }
 
     // MARK: - Simulations-Tick
@@ -103,20 +110,25 @@ final class World {
             nearestFoodType  = food.type == .corpse ? 1.0 : 0.0
         }
 
+        // Eine einzige Grid-Abfrage für alle drei Kreatur-Sensoren (Nearest, Dichte, Heading).
+        // Radius = max(sightRadius, 80px), danach per Distanz gefiltert.
+        // === statt UUID-Vergleich — Pointer-Identity ist O(1) ohne Hashing.
+        let crQueryRadius = max(creature.sightRadius, 80)
+        let nearbyAll = grid.nearbyCreatures(to: creature.position, within: crQueryRadius)
+                            .filter { $0 !== creature }
+
         var angleToCreature:  Float = 0
         var distToCreature:   Float = 1
         var approachVelocity: Float = 0
-        if let other = nearestCreature(to: creature, within: creature.sightRadius) {
+        let inSight = creature.sightRadius
+        if let other = nearbyAll
+                .filter({ distance($0.position, creature.position) < inSight })
+                .min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
             let dx = Float(other.position.x - creature.position.x)
             let dy = Float(other.position.y - creature.position.y)
             let dist = Float(distance(creature.position, other.position))
-            let relAngle = normalizeAngle(atan2(dy, dx) - creature.heading)
-            angleToCreature = relAngle / .pi
+            angleToCreature = normalizeAngle(atan2(dy, dx) - creature.heading) / .pi
             distToCreature  = dist / sightR
-
-            // Annäherungsgeschwindigkeit: Projektion der Geschwindigkeit von `other`
-            // auf den Vektor der von `other` auf `creature` zeigt (-dx, -dy).
-            // Positiv = nähert sich, negativ = flieht.
             let otherSpeed = (other.lastAction?.speed ?? 0) * other.maxSpeed
             let vx = cos(other.heading) * otherSpeed
             let vy = sin(other.heading) * otherSpeed
@@ -126,20 +138,15 @@ final class World {
             }
         }
 
-        let densityRadius: CGFloat = 55
-        let nearbyForDensity = grid.nearbyCreatures(to: creature.position, within: densityRadius)
-                                   .filter { $0 != creature && distance($0.position, creature.position) < densityRadius }
-        let localDensity  = min(Float(nearbyForDensity.count) / 8.0, 1.0)
+        let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
+        let localDensity = min(Float(densityCount) / 8.0, 1.0)
 
         // Circular mean der Bewegungsrichtungen aller Nachbarn im 80px-Radius.
-        // sin/cos-Komponenten mitteln verhindert Fehler wenn Winkel über ±π springen.
-        let headingRadius: CGFloat = 80
-        let neighbors = grid.nearbyCreatures(to: creature.position, within: headingRadius)
-                            .filter { $0 != creature && distance($0.position, creature.position) < headingRadius }
+        let neighbors80 = nearbyAll.filter { distance($0.position, creature.position) < 80 }
         var avgNearbyHeading: Float = 0
-        if !neighbors.isEmpty {
-            let sinMean = neighbors.reduce(Float(0)) { $0 + sin($1.heading) } / Float(neighbors.count)
-            let cosMean = neighbors.reduce(Float(0)) { $0 + cos($1.heading) } / Float(neighbors.count)
+        if !neighbors80.isEmpty {
+            let sinMean = neighbors80.reduce(Float(0)) { $0 + sin($1.heading) } / Float(neighbors80.count)
+            let cosMean = neighbors80.reduce(Float(0)) { $0 + cos($1.heading) } / Float(neighbors80.count)
             avgNearbyHeading = normalizeAngle(atan2(sinMean, cosMean) - creature.heading) / .pi
         }
 
@@ -202,8 +209,10 @@ final class World {
             }
         }
         if !eatenIDs.isEmpty {
+            let eatenCorpses = foodSources.filter { eatenIDs.contains($0.id) && $0.type == .corpse }.count
             foodSources.removeAll { eatenIDs.contains($0.id) }
-            plantCount -= eatenPlants
+            plantCount  -= eatenPlants
+            corpseCount -= eatenCorpses
         }
     }
 
@@ -211,23 +220,23 @@ final class World {
 
     private func checkDeaths() {
         // Gompertz-ähnliche Sterblichkeit: kleines Grundrisiko + exponentiell steigendes Altersrisiko.
-        // Bei maxAge = 1.0 → Sterbenswahrscheinlichkeit ≈ 30 %/Tick — sicherer Tod, kein exaktes Datum.
-        var died = Set<UUID>()
+        // Ein Pass — kein UUID-Set, kein zweites Iterieren.
+        var survivors: [Creature] = []
+        survivors.reserveCapacity(creatures.count)
         for creature in creatures {
-            let ageRatio = Float(creature.age) / Float(creature.dna.maxAge)
+            let ageRatio    = Float(creature.age) / Float(creature.dna.maxAge)
             let deathChance = 0.0001 + ageRatio * ageRatio * 0.003
-            if !creature.isAlive || Float.random(in: 0...1) < deathChance {
-                died.insert(creature.id)
+            if creature.isAlive && Float.random(in: 0...1) >= deathChance {
+                survivors.append(creature)
+            } else if creature.bodyMass > 1 {
+                foodSources.append(FoodSource(position: creature.position,
+                                              energyValue: creature.bodyMass * 0.7,
+                                              type: .corpse,
+                                              spawnedAt: tickCount))
+                corpseCount += 1
             }
         }
-        for creature in creatures where died.contains(creature.id) {
-            guard creature.bodyMass > 1 else { continue }   // ausgemergelte Körper sind wertlos
-            foodSources.append(FoodSource(position: creature.position,
-                                          energyValue: creature.bodyMass * 0.7,
-                                          type: .corpse,
-                                          spawnedAt: tickCount))
-        }
-        creatures.removeAll { died.contains($0.id) }
+        creatures = survivors
     }
 
     // MARK: - Fortpflanzung
@@ -312,8 +321,13 @@ final class World {
 
     private func decayFood() {
         // Leichen verrotten und verschwinden — keine Energieentstehung.
-        // Pflanzenwachstum läuft unabhängig über growFood().
-        foodSources.removeAll { $0.type == .corpse && tickCount - $0.spawnedAt > 600 }
+        var decayed = 0
+        foodSources.removeAll {
+            guard $0.type == .corpse, tickCount - $0.spawnedAt > 600 else { return false }
+            decayed += 1
+            return true
+        }
+        corpseCount -= decayed
     }
 
     // MARK: - Hilfsmethoden
