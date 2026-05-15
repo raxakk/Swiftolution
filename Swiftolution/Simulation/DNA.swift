@@ -17,13 +17,11 @@ struct DNA {
     var red:                   Float { genes[7] }
     var green:                 Float { genes[8] }
     var blue:                  Float { genes[9] }
-    // 0 = Wüstenangepasst (schnell+effizient in der Wüste), 1 = Waldangepasst (effizient im Wald)
-    var habitatPreference:     Float { genes[10] }
     // 0 → 1 Nachkomme (r-Stratege: viele, billige Nachkommen), 1 → 4 (K-Stratege: wenige, teure)
     // Wurfgröße skaliert 1–4; Kosten pro Nachkomme steigen mit der Wurfgröße.
-    var litterSize:            Int   { max(1, Int(genes[11] * 3) + 1) }   // [1, 4]
+    var litterSize:            Int   { max(1, Int(genes[10] * 3) + 1) }   // [1, 4]
 
-    static let neuralWeightsStartIndex = 12
+    static let neuralWeightsStartIndex = 11
 
     static func totalLength(networkWeightCount: Int) -> Int {
         neuralWeightsStartIndex + networkWeightCount

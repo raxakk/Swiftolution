@@ -35,9 +35,6 @@ struct InspectionView: View {
             TraitBar(label: "Aggression",       value: snapshot.aggression,     color: .red)
             TraitBar(label: "Sichtweite",       value: snapshot.sightRadius,    color: .purple)
             TraitBar(label: "Fortpfl.-Schwelle", value: snapshot.reproThreshold, color: .teal)
-            TraitBar(label: "Habitat",           value: snapshot.habitatPreference, color: .brown,
-                     displayOverride: snapshot.habitatPreference < 0.35 ? "Wüste"
-                                    : snapshot.habitatPreference > 0.65 ? "Wald" : "Generalist")
             TraitBar(label: "Gehirngröße",
                      value: snapshot.brainSize,
                      color: .indigo,

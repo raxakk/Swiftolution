@@ -19,8 +19,7 @@ final class World {
     var mutationStrength: Float  = 0.10
     var maxPopulation:    Int    = 300
 
-    private lazy var grid    = SpatialGrid(cellSize: 80, worldSize: size)
-    private(set) lazy var terrain = TerrainMap(worldSize: size)
+    private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
 
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
@@ -56,34 +55,11 @@ final class World {
 
     private func moveCreatures() {
         for creature in creatures {
-            let input      = sense(for: creature)
-            let output     = creature.brain.activate(inputs: input)
-            let t          = terrain.at(creature.position)
-            let speedMod   = terrainSpeedMod(t, pref: creature.dna.habitatPreference)
-            creature.apply(output: output, in: self, speedModifier: speedMod)
+            let input  = sense(for: creature)
+            let output = creature.brain.activate(inputs: input)
+            creature.apply(output: output, in: self)
             creature.tick()
-            // Wüstenhitze trifft nicht-angepasste Lebewesen besonders hart
-            creature.energy -= terrainHeatCost(t, pref: creature.dna.habitatPreference)
         }
-    }
-
-    // Geschwindigkeitsmodifikator: Habitatpräferenz verschiebt Vor-/Nachteil je Terrain
-    private func terrainSpeedMod(_ t: TerrainType, pref: Float) -> Float {
-        switch t {
-        case .grassland: return 1.0
-        case .forest:
-            // Waldangepasst (pref=1): kaum Verlust (0.85×), unangepasst (pref=0): langsam (0.55×)
-            return 0.55 + pref * 0.30
-        case .desert:
-            // Wüstenangepasst (pref=0): schnell (1.15×), Waldangepasst (pref=1): trage (0.80×)
-            return 1.15 - pref * 0.35
-        }
-    }
-
-    // Extrakosten durch Wüstenhitze — bei Wüstenanpassung stark reduziert
-    private func terrainHeatCost(_ t: TerrainType, pref: Float) -> Float {
-        guard t == .desert else { return 0 }
-        return 0.03 + pref * 0.05   // pref=0 → 0.03/Tick, pref=1 → 0.08/Tick
     }
 
     // Baut den Sensor-Input für ein Lebewesen auf.
@@ -143,24 +119,16 @@ final class World {
             avgNearbyHeading = normalizeAngle(atan2(sinMean, cosMean) - creature.heading) / .pi
         }
 
-        let terrainValue: Float
-        switch terrain.at(creature.position) {
-        case .desert:    terrainValue = 0.0
-        case .grassland: terrainValue = 0.5
-        case .forest:    terrainValue = 1.0
-        }
-
         return SensorInput(
-            angleToFood:                 angleToFood,
-            distanceToFood:              distToFood,
-            angleToCreature:             angleToCreature,
-            distanceToCreature:          distToCreature,
-            ownEnergy:                   creature.energy / creature.maxEnergy,
-            localDensity:                localDensity,
-            approachVelocity:            approachVelocity,
-            nearestFoodType:             nearestFoodType,
-            currentTerrain:              terrainValue,
-            avgNearbyHeading:            avgNearbyHeading
+            angleToFood:        angleToFood,
+            distanceToFood:     distToFood,
+            angleToCreature:    angleToCreature,
+            distanceToCreature: distToCreature,
+            ownEnergy:          creature.energy / creature.maxEnergy,
+            localDensity:       localDensity,
+            approachVelocity:   approachVelocity,
+            nearestFoodType:    nearestFoodType,
+            avgNearbyHeading:   avgNearbyHeading
         )
     }
 
@@ -304,19 +272,9 @@ final class World {
         let fillRatio = Double(plantCount) / Double(maxFood)
         let newItems  = Int((foodGrowthRate * (1.0 - fillRatio) * Double(maxFood)).rounded())
         for _ in 0..<max(0, newItems) {
-            foodSources.append(FoodSource(position: terrainBiasedPosition()))
+            foodSources.append(FoodSource(position: randomPosition()))
             plantCount += 1
         }
-    }
-
-    // Nahrung wächst bevorzugt in nahrungsreichen Biotopen (Wald > Grasland > Wüste)
-    private func terrainBiasedPosition() -> CGPoint {
-        for _ in 0..<6 {
-            let pos = randomPosition()
-            let weight = terrain.at(pos).foodWeight
-            if Float.random(in: 0...1) < weight { return pos }
-        }
-        return randomPosition()
     }
 
     private func decayFood() {

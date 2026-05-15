@@ -21,11 +21,10 @@ final class GameScene: SKScene {
     // MARK: - Setup
 
     func setup(world: World) {
-        size        = world.size
-        scaleMode   = .aspectFit
-        anchorPoint = .zero
+        size            = world.size
+        scaleMode       = .aspectFit
+        anchorPoint     = .zero
         backgroundColor = NSColor(red: 0.06, green: 0.07, blue: 0.10, alpha: 1)
-        drawTerrain(world.terrain)
     }
 
     func reset(world: World) {
@@ -33,27 +32,6 @@ final class GameScene: SKScene {
         creatureNodes.removeAll()
         foodNodes.removeAll()
         setup(world: world)
-    }
-
-    private func drawTerrain(_ map: TerrainMap) {
-        let w = Int(size.width), h = Int(size.height)
-        guard let ctx = CGContext(data: nil, width: w, height: h,
-                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { return }
-
-        map.forEachCell { col, row, type in
-            if let c = type.color.usingColorSpace(.deviceRGB) { ctx.setFillColor(c.cgColor) }
-            ctx.fill(map.cellRect(col: col, row: row))
-        }
-
-        guard let img = ctx.makeImage() else { return }
-        let node         = SKSpriteNode(texture: SKTexture(cgImage: img), size: size)
-        node.anchorPoint = .zero
-        node.position    = .zero
-        node.zPosition   = -10
-        addChild(node)
     }
 
     // MARK: - Update (von SimulationEngine aufgerufen — nur lesen, nicht verändern!)

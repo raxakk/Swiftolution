@@ -67,14 +67,14 @@ final class Creature {
         consumeEnergy()
     }
 
-    func apply(output: ActionOutput, in world: World, speedModifier: Float = 1.0) {
+    func apply(output: ActionOutput, in world: World) {
         lastAction = output
 
         let maxTurnRate: Float = 0.2
         heading += (output.turnAngle - 0.5) * 2 * maxTurnRate
 
         let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3)
-        let speed = output.speed * effectiveMaxSpeed * speedModifier
+        let speed = output.speed * effectiveMaxSpeed
         position.x += CGFloat(cos(heading) * speed)
         position.y += CGFloat(sin(heading) * speed)
 

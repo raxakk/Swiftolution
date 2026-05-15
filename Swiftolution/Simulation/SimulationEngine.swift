@@ -155,7 +155,6 @@ struct CreatureSnapshot {
     let aggression:           Float
     let sightRadius:          Float
     let reproThreshold:       Float
-    let habitatPreference:    Float
     let brainSize:            Float
     let hiddenCount:          Int
     // Aktuelles NN-Verhalten
@@ -172,9 +171,8 @@ struct CreatureSnapshot {
         speed          = c.dna.speed
         aggression     = c.dna.aggression
         sightRadius    = c.dna.sightRadius
-        reproThreshold    = c.dna.reproductionThreshold
-        habitatPreference = c.dna.habitatPreference
-        brainSize         = c.dna.brainSize
+        reproThreshold = c.dna.reproductionThreshold
+        brainSize      = c.dna.brainSize
         hiddenCount    = c.hiddenCount
         actionSpeed    = c.lastAction?.speed          ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
