@@ -197,9 +197,9 @@ final class World {
             }
         }
         for creature in creatures where died.contains(creature.id) {
-            let bodyEnergy = creature.maxEnergy * 0.55
+            guard creature.bodyMass > 1 else { continue }   // ausgemergelte Körper sind wertlos
             foodSources.append(FoodSource(position: creature.position,
-                                          energyValue: bodyEnergy,
+                                          energyValue: creature.bodyMass * 0.7,
                                           type: .corpse,
                                           spawnedAt: tickCount))
         }
@@ -237,23 +237,32 @@ final class World {
                 let midPoint = CGPoint(x: (parent.position.x + partner.position.x) / 2,
                                        y: (parent.position.y + partner.position.y) / 2)
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
-                // Energiekosten steigen mit Wurfgröße: r-Stratege (viele Junge) zahlt mehr Gesamt-Energie
-                let costPerParent = Float(litter) * 0.10 + 0.10   // 1 Kind → 20%, 4 Kinder → 50%
+                // Jedes Elternteil investiert 30% seiner Maximalenergie — unabhängig von der Wurfgröße.
+                // Die Gesamtinvestition beider Eltern wird gleichmäßig auf die Kinder verteilt.
+                // Kein Energie-Leak: Kinder bekommen nur was Eltern bezahlen.
+                let costPerParent: Float = 0.30
+                let totalPool = parent.maxEnergy * costPerParent + partner.maxEnergy * costPerParent
+                let perChildEnergy = totalPool / Float(litter)
                 for _ in 0..<litter {
                     let childDNA = parent.dna.crossed(with: partner.dna)
                                              .mutated(rate: mutationRate, strength: mutationStrength)
-                    newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: midPoint)))
+                    let child = Creature(dna: childDNA, position: dispersedPosition(from: midPoint))
+                    child.energy = min(child.maxEnergy * 0.6, perChildEnergy)
+                    newborns.append(child)
                 }
                 parent.energy  -= parent.maxEnergy  * costPerParent
                 partner.energy -= partner.maxEnergy * costPerParent
             } else {
-                // Asexuell als Fallback — teurer pro Kind, da kein genetischer Vorteil
+                // Asexuell als Fallback — Elternteil investiert 40%, verteilt auf Wurf
                 mated.insert(parent.id)
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
-                let cost   = Float(litter) * 0.12 + 0.16   // 1 Kind → 28%, 4 Kinder → 64%
+                let cost: Float = 0.40
+                let perChildEnergy = parent.maxEnergy * cost / Float(litter)
                 for _ in 0..<litter {
                     let childDNA = parent.dna.mutated(rate: mutationRate, strength: mutationStrength)
-                    newborns.append(Creature(dna: childDNA, position: dispersedPosition(from: parent.position)))
+                    let child = Creature(dna: childDNA, position: dispersedPosition(from: parent.position))
+                    child.energy = min(child.maxEnergy * 0.6, perChildEnergy)
+                    newborns.append(child)
                 }
                 parent.energy -= parent.maxEnergy * cost
             }
@@ -278,14 +287,9 @@ final class World {
     }
 
     private func decayFood() {
-        // Nährstoffkreislauf: Leichen zersetzen sich zu pflanzlicher Nahrung.
-        for i in foodSources.indices {
-            let food = foodSources[i]
-            guard food.type == .corpse else { continue }
-            guard tickCount - food.spawnedAt > 600 else { continue }
-            foodSources[i] = FoodSource(position: food.position, type: .plant)
-            plantCount += 1
-        }
+        // Leichen verrotten und verschwinden — keine Energieentstehung.
+        // Pflanzenwachstum läuft unabhängig über growFood().
+        foodSources.removeAll { $0.type == .corpse && tickCount - $0.spawnedAt > 600 }
     }
 
     // MARK: - Hilfsmethoden

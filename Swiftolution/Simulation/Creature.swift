@@ -17,6 +17,10 @@ final class Creature {
     // MARK: - Zustand
 
     var energy: Float
+    // Körpermasse: akkumulierter Nährwert (Muskeln, Fett) — unabhängig vom metabolischen Akku.
+    // Steigt wenn gut ernährt, baut sich bei Hunger durch Muskelkatabolismus ab.
+    // Bestimmt den Nährwert der Leiche.
+    var bodyMass: Float
     var age: Int = 0
     var isAlive: Bool { energy > 0 }
 
@@ -55,6 +59,7 @@ final class Creature {
         self.dna      = dna
         self.position = position
         self.energy   = dna.size * 80 + 40
+        self.bodyMass = dna.size * 60 + 20   // Startmasse proportional zur Körpergröße
         let hc = NeuralNetwork.minHiddenCount +
             Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
         self.brain    = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: hc)
@@ -107,6 +112,14 @@ final class Creature {
         let brainCost:      Float = dna.brainSize * 0.02
         let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost
         energy -= baseCosts * (1 + senescence * 0.5)
+
+        // Gut ernährt (>60%): Körpermasse aufbauen. Verhungernd (<20%): Muskelkatabolismus.
+        let maxBodyMass = dna.size * 60 + 20
+        if energy > maxEnergy * 0.6 {
+            bodyMass = min(maxBodyMass, bodyMass + 0.05)
+        } else if energy < maxEnergy * 0.2 {
+            bodyMass = max(0, bodyMass - 0.3)
+        }
     }
 }
 
