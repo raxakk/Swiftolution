@@ -14,6 +14,7 @@ final class World {
 
     var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
     var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
+    var totalDeaths: Int = 0
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -58,16 +59,14 @@ final class World {
     func populate(creatures creatureCount: Int, food foodCount: Int) {
         for _ in 0..<creatureCount {
             var dna = DNA.random()
-            // 80% Pflanzenfresser als Startpopulation — Fleischfresser sollen durch Evolution entstehen
-            if Float.random(in: 0...1) < 0.8 {
-                dna.genes[3] = Float.random(in: 0...0.4)
-            }
+            // Urknall: alle Lebewesen starten als Pflanzenfresser — Fleischfresser entstehen durch Evolution
+            dna.genes[3] = Float.random(in: 0...0.4)
             creatures.append(Creature(dna: dna, position: randomPosition()))
         }
         for _ in 0..<foodCount {
             foodSources.append(FoodSource(position: randomPosition()))
         }
-        plantCount  = foodCount   // Startnahrung sind alles Pflanzen
+        plantCount  = foodCount
         corpseCount = 0
     }
 
@@ -94,7 +93,7 @@ final class World {
         // Phase 1 — Parallel: Wahrnehmung + NN-Aktivierung.
         // Jede Kreatur liest nur ihren eigenen Zustand und den unveränderlichen Grid — kein Data Race.
         // withUnsafeMutableBufferPointer fixiert den Array-Puffer → COW-freier Schreibzugriff aus n Threads.
-        var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0]), count: count)
+        var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1]), count: count)
         outputs.withUnsafeMutableBufferPointer { buf in
             DispatchQueue.concurrentPerform(iterations: count) { [self] i in
                 let input = sense(for: creatures[i])
@@ -186,18 +185,19 @@ final class World {
         var energyDeltas = [ObjectIdentifier: Float](minimumCapacity: creatures.count)
 
         for attacker in creatures {
+            // Kein harter Aggression-Threshold — Schaden und Kosten skalieren bereits mit aggression.
             guard let action = attacker.lastAction,
-                  action.wantsToAttack > 0.5,
-                  attacker.dna.aggression > 0.45 else { continue }
+                  action.wantsToAttack > 0.5 else { continue }
 
             guard let victim = nearestCreature(to: attacker, within: attacker.attackRadius) else { continue }
             guard attacker.dna.size >= victim.dna.size * 0.6 else { continue }
 
             let rawDamage = (attacker.dna.size * 0.6 + attacker.dna.aggression * 0.4) * 50
-            let defense   = min(victim.dna.aggression * 0.9, 0.92)
+            // Größe = Robustheit (dickere Haut/Panzer), Aggression = Kampferfahrung/Reflexe
+            let defense   = min(victim.dna.size * 0.30 + victim.dna.aggression * 0.60, 0.90)
             let damage    = rawDamage * (1 - defense)
 
-            energyDeltas[ObjectIdentifier(attacker), default: 0] -= attacker.dna.aggression * 6
+            energyDeltas[ObjectIdentifier(attacker), default: 0] -= attacker.dna.aggression * 2
             energyDeltas[ObjectIdentifier(victim),   default: 0] -= damage
         }
 
@@ -216,8 +216,13 @@ final class World {
             for food in grid.nearbyFood(to: creature.position, within: creature.eatRadius) {
                 guard !eatenIDs.contains(food.id) else { continue }
                 guard distance(creature.position, food.position) < creature.eatRadius else { continue }
-                if food.type == .plant  && creature.dna.aggression >  0.45 { continue }
-                if food.type == .corpse && creature.dna.aggression <= 0.45 { continue }
+                // Hungerinstinkt: verhungernde Lebewesen (<40% Energie) fressen immer, wenn sie die
+                // Nahrung verdauen können — Überleben schlägt Lernverhalten.
+                // Gut ernährte Lebewesen folgen ihrem NN: Evolution lernt schlechte Nahrung zu meiden.
+                let isHungry   = creature.energy < creature.maxEnergy * 0.4
+                let canDigest  = creature.digestibility(for: food) >= 0.10
+                let wantsToEat = (creature.lastAction?.wantsToEat ?? 1.0) > 0.5
+                guard (isHungry && canDigest) || wantsToEat else { continue }
                 creature.eat(food: food)
                 if food.type == .plant { eatenPlants += 1 }
                 eatenIDs.insert(food.id)
@@ -243,12 +248,15 @@ final class World {
             let deathChance = 0.0001 + ageRatio * ageRatio * 0.003
             if creature.isAlive && Float.random(in: 0...1) >= deathChance {
                 survivors.append(creature)
-            } else if creature.bodyMass > 1 {
-                foodSources.append(FoodSource(position: creature.position,
-                                              energyValue: creature.bodyMass * 0.7,
-                                              type: .corpse,
-                                              spawnedAt: tickCount))
-                corpseCount += 1
+            } else {
+                totalDeaths += 1
+                if creature.bodyMass > 1 {
+                    foodSources.append(FoodSource(position: creature.position,
+                                                  energyValue: creature.bodyMass * 1.0,
+                                                  type: .corpse,
+                                                  spawnedAt: tickCount))
+                    corpseCount += 1
+                }
             }
         }
         creatures = survivors
@@ -342,7 +350,7 @@ final class World {
         // Leichen verrotten und verschwinden — keine Energieentstehung.
         var decayed = 0
         foodSources.removeAll {
-            guard $0.type == .corpse, tickCount - $0.spawnedAt > 600 else { return false }
+            guard $0.type == .corpse, tickCount - $0.spawnedAt > 1200 else { return false }
             decayed += 1
             return true
         }

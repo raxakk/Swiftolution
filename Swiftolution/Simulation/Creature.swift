@@ -88,18 +88,25 @@ final class Creature {
         position.y = (position.y + world.size.height).truncatingRemainder(dividingBy: world.size.height)
     }
 
-    func eat(food: FoodSource) {
-        let digestibility: Float
+    func digestibility(for food: FoodSource) -> Float {
         switch food.type {
         case .plant:
-            // Spezialisierung × Verdauungseffizienz: Pflanzenfresser extrahieren 60% der Pflanzenenergie,
-            // Fleischfresser noch weniger (Enzyme fehlen). Pflanzenenergie ist schwer zugänglich (Zellulose).
-            digestibility = (1.0 - dna.aggression * 0.7) * 0.6
+            // Pflanzenfresser-Enzyme: aggression=0 → 60 %, aggression=1 → 18 %
+            return (1.0 - dna.aggression * 0.7) * 0.6
         case .corpse:
-            // Fleisch ist verdaulicher als Pflanzenmaterial, aber trophische Verluste bleiben.
-            digestibility = 0.65
+            // Fleischfresser-Enzyme: aggression=0 → 0 %, aggression=0.5 → 40 %, aggression=1 → 80 %
+            return dna.aggression * 0.80
         }
-        energy = min(energy + food.energyValue * digestibility, maxEnergy)
+    }
+
+    func eat(food: FoodSource) {
+        let d = digestibility(for: food)
+        if d < 0.10 {
+            // Zu fremdartige Nahrung: Verdauungsversuch kostet Energie (Übelkeit, Enzymverschwendung)
+            energy = max(0, energy - 5)
+        } else {
+            energy = min(energy + food.energyValue * d, maxEnergy)
+        }
     }
 
     // MARK: - Privates
@@ -107,7 +114,9 @@ final class Creature {
     private func consumeEnergy() {
         let baseCost:       Float = 0.08
         let sizeCost:       Float = dna.size * 0.06
-        let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025
+        // Bewegung skaliert mit Masse: groß+schnell verbrennt überproportional viel Energie.
+        // size=0 → 1×, size=0.5 → 1.4×, size=1 → 1.8× Bewegungskosten
+        let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
         let aggressionCost: Float = dna.aggression * 0.09
         let brainCost:      Float = dna.brainSize * 0.02
         let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost

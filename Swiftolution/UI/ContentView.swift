@@ -65,16 +65,28 @@ struct SidebarView: View {
 
                 // MARK: Statistiken
                 SidebarSection(title: "Statistiken") {
-                    StatRow(label: "Tick",            value: "\(engine.stats.tickCount)")
-                    StatRow(label: "Generation",      value: "\(engine.stats.generation)")
-                    StatRow(label: "Population",      value: "\(engine.stats.population)")
-                    StatRow(label: "Pflanzenfresser", value: "\(engine.stats.herbivores)")
-                    StatRow(label: "Fleischfresser",  value: "\(engine.stats.carnivores)")
-                    StatRow(label: "Geburten",        value: "\(engine.stats.totalBirths)")
-                    StatRow(label: "Pflanzen",        value: "\(engine.stats.plantCount) / \(engine.config.foodCapacity)")
-                    StatRow(label: "Leichen",         value: "\(engine.stats.corpseCount)")
-                    StatRow(label: "Ältestes",        value: "\(engine.stats.oldestAge) Ticks")
-                    StatRow(label: "Ø Energie",       value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
+                    StatRow(label: "Tick",          value: "\(engine.stats.tickCount)")
+                    StatRow(label: "Generation",    value: "\(engine.stats.generation)")
+                    StatRow(label: "Population",    value: "\(engine.stats.population)")
+
+                    StatRow(label: "Herbivore",     value: "\(engine.stats.herbivores)",
+                            color: .green)
+                    StatRow(label: "Omnivore",      value: "\(engine.stats.omnivores)",
+                            color: .orange)
+                    StatRow(label: "Carnivore",     value: "\(engine.stats.carnivores)",
+                            color: .red)
+                    StatRow(label: "Ø Aggression",  value: String(format: "%.2f", engine.stats.avgAggression))
+
+                    StatRow(label: "Geburten",      value: "\(engine.stats.totalBirths)")
+                    StatRow(label: "Tode",          value: "\(engine.stats.totalDeaths)")
+
+                    StatRow(label: "Pflanzen",      value: "\(engine.stats.plantCount) / \(engine.stats.maxFood)")
+                    StatRow(label: "Leichen",       value: "\(engine.stats.corpseCount)")
+
+                    StatRow(label: "Ø Alter",       value: String(format: "%.0f Ticks", engine.stats.averageAge))
+                    StatRow(label: "Ältestes",      value: "\(engine.stats.oldestAge) Ticks")
+                    StatRow(label: "Ø Energie",     value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
+
                     if engine.config.seasonEnabled {
                         StatRow(label: "Jahreszeit",
                                 value: "\(engine.stats.currentSeason) (\(Int(engine.stats.seasonFactor * 100))%)")
@@ -256,12 +268,13 @@ private struct ParamSlider: View {
 private struct StatRow: View {
     let label: String
     let value: String
+    var color: Color = .primary
 
     var body: some View {
         HStack {
             Text(label).foregroundStyle(.secondary).font(.caption)
             Spacer()
-            Text(value).font(.caption.monospacedDigit())
+            Text(value).font(.caption.monospacedDigit()).foregroundStyle(color)
         }
     }
 }

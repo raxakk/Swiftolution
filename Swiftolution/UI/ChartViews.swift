@@ -31,8 +31,9 @@ struct PopulationChart: View {
 
     private var points: [Point] {
         snapshots.flatMap { s in [
-            Point(id: "\(s.tick)-H", tick: s.tick, count: s.herbivores, series: "Pflanzenfresser"),
-            Point(id: "\(s.tick)-C", tick: s.tick, count: s.carnivores, series: "Fleischfresser"),
+            Point(id: "\(s.tick)-H", tick: s.tick, count: s.herbivores, series: "Herbivore"),
+            Point(id: "\(s.tick)-O", tick: s.tick, count: s.omnivores,  series: "Omnivore"),
+            Point(id: "\(s.tick)-C", tick: s.tick, count: s.carnivores, series: "Carnivore"),
             Point(id: "\(s.tick)-F", tick: s.tick, count: s.plantFood,  series: "Pflanzen"),
         ]}
     }
@@ -51,9 +52,10 @@ struct PopulationChart: View {
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .chartForegroundStyleScale([
-                "Pflanzenfresser": Color.green,
-                "Fleischfresser":  Color.red,
-                "Pflanzen":        Color.teal,
+                "Herbivore": Color.green,
+                "Omnivore":  Color.orange,
+                "Carnivore": Color.red,
+                "Pflanzen":  Color.teal,
             ])
             .chartXAxis(.hidden)
             .chartLegend(position: .overlay, alignment: .topLeading, spacing: 4)
@@ -84,6 +86,7 @@ struct TraitsChart: View {
             Point(id: "\(s.tick)-B", tick: s.tick, value: s.avgBrainSize,  trait: "Gehirn"),
             Point(id: "\(s.tick)-M", tick: s.tick, value: s.avgMaxAge,     trait: "Langlebigkeit"),
             Point(id: "\(s.tick)-L", tick: s.tick, value: s.avgLitterSize, trait: "Wurfgröße"),
+            Point(id: "\(s.tick)-E", tick: s.tick, value: s.avgEnergy,     trait: "Ø Energie"),
         ]}
     }
 
@@ -102,12 +105,13 @@ struct TraitsChart: View {
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .chartForegroundStyleScale([
-                "Aggression":   Color.red,
-                "Tempo":        Color.blue,
-                "Größe":        Color.orange,
-                "Gehirn":       Color.indigo,
+                "Aggression":    Color.red,
+                "Tempo":         Color.blue,
+                "Größe":         Color.orange,
+                "Gehirn":        Color.indigo,
                 "Langlebigkeit": Color.mint,
-                "Wurfgröße":    Color.yellow,
+                "Wurfgröße":     Color.yellow,
+                "Ø Energie":     Color.cyan,
             ])
             .chartYScale(domain: 0...1)
             .chartXAxis(.hidden)

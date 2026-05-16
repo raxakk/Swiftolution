@@ -129,15 +129,21 @@ final class SimulationEngine: ObservableObject {
 
     private func updateStats() {
         let creatures       = world.creatures
+        let n               = Double(creatures.count)
         stats.tickCount     = world.tickCount
         stats.generation    = world.generation
         stats.population    = creatures.count
-        stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.45 }.count
-        stats.carnivores    = creatures.filter { $0.dna.aggression  > 0.45 }.count
+        stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.33 }.count
+        stats.omnivores     = creatures.filter { $0.dna.aggression > 0.33 && $0.dna.aggression <= 0.67 }.count
+        stats.carnivores    = creatures.filter { $0.dna.aggression > 0.67 }.count
+        stats.avgAggression = n > 0 ? creatures.map { Double($0.dna.aggression) }.reduce(0,+) / n : 0
         stats.totalBirths   = world.totalBirths
+        stats.totalDeaths   = world.totalDeaths
         stats.plantCount    = world.plantCount
+        stats.maxFood       = world.maxFood
         stats.corpseCount   = world.corpseCount
         stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
+        stats.averageAge    = n > 0 ? creatures.map { Double($0.age) }.reduce(0,+) / n : 0
         let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
         stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)
         stats.currentSeason = world.currentSeasonName
@@ -191,6 +197,7 @@ struct CreatureSnapshot {
     let actionSpeed:      Float
     let actionReproduce:  Float
     let actionAttack:     Float
+    let actionEat:        Float
 
     init(_ c: Creature) {
         age           = c.age
@@ -210,9 +217,10 @@ struct CreatureSnapshot {
         litterSize    = c.dna.litterSize
         brainSize     = c.dna.brainSize
         hiddenCount   = c.hiddenCount
-        actionSpeed   = c.lastAction?.speed             ?? 0
+        actionSpeed     = c.lastAction?.speed             ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
-        actionAttack  = c.lastAction?.wantsToAttack     ?? 0
+        actionAttack    = c.lastAction?.wantsToAttack    ?? 0
+        actionEat       = c.lastAction?.wantsToEat       ?? 1
     }
 }
 
@@ -222,12 +230,18 @@ struct SimulationStats {
     var tickCount:     Int    = 0
     var generation:    Int    = 0
     var population:    Int    = 0
-    var herbivores:    Int    = 0
-    var carnivores:    Int    = 0
+    // Drei-Klassen-Einteilung nach Aggression (kontinuierlich, keine harte Grenze)
+    var herbivores:    Int    = 0   // aggression ≤ 0.33
+    var omnivores:     Int    = 0   // 0.33 < aggression ≤ 0.67
+    var carnivores:    Int    = 0   // aggression > 0.67
+    var avgAggression: Double = 0
     var totalBirths:   Int    = 0
+    var totalDeaths:   Int    = 0
     var plantCount:    Int    = 0
+    var maxFood:       Int    = 0
     var corpseCount:   Int    = 0
     var oldestAge:     Int    = 0
+    var averageAge:    Double = 0
     var averageEnergy: Double = 0
     var currentSeason: String = "–"
     var seasonFactor:  Double = 1.0

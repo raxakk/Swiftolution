@@ -81,6 +81,7 @@ struct SwiftolutionTests {
             #expect((0...1).contains(out.speed))
             #expect((0...1).contains(out.wantsToReproduce))
             #expect((0...1).contains(out.wantsToAttack))
+            #expect((0...1).contains(out.wantsToEat))
         }
     }
 
@@ -162,46 +163,143 @@ struct SwiftolutionTests {
 
     @Test func eatCorpseDigestibility() {
         var dna = DNA.random()
-        dna.genes[3] = 1.0  // carnivore — digestibility = 0.65
+        dna.genes[3] = 1.0  // carnivore — digestibility = 0.80
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         let food = FoodSource(position: .zero, energyValue: 100, type: .corpse)
         creature.eat(food: food)
-        #expect(abs(creature.energy - 65) < 0.01)
+        #expect(abs(creature.energy - 80) < 0.01)
     }
 
-    // MARK: - World: feeding rules
+    // MARK: - World: feeding rules (kontinuierliche Verdaulichkeit + Mindest-Threshold)
 
-    @Test func herbivoreDoesNotEatCorpse() {
-        let world = World(size: CGSize(width: 200, height: 200))
+    @Test func herbivoreGetsZeroFromCorpse() {
+        // aggression=0 → corpse digestibility = 0*0.80 = 0
         var dna = DNA.random()
-        dna.genes[3] = 0.2  // herbivore (aggression ≤ 0.45)
+        dna.genes[3] = 0.0
+        let creature = Creature(dna: dna, position: .zero)
+        #expect(creature.digestibility(for: FoodSource(position: .zero, energyValue: 100, type: .corpse)) == 0)
+    }
+
+    @Test func wantsToEatFalseSkipsFood() {
+        // Gut ernährte Kreatur mit wantsToEat=0 lässt Nahrung in Reichweite liegen.
+        // Hungerinstinkt greift nicht: Energie > 40% → kein Override.
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy = 1
+        creature.energy     = creature.maxEnergy * 0.7  // well-fed — nicht hungrig
+        let initialEnergy   = creature.energy
+        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
+        world.creatures     = [creature]
+        world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
+                                          energyValue: 100, type: .plant)]
+        world.plantCount    = 1
+        world.rebuildGrid()
+        world.feedCreatures()
+        #expect(world.foodSources.count == 1)  // Nahrung unberührt
+        #expect(creature.energy == initialEnergy)
+    }
+
+    @Test func hungerInstinctOverridesWantsToEatForDigestibleFood() {
+        // Hungernde Kreatur (<40% Energie) frisst verdauliche Nahrung auch wenn wantsToEat=0
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[3] = 0.0  // Herbivore — kann Pflanzen verdauen
+        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        creature.energy     = creature.maxEnergy * 0.2  // hungrig (<40%)
+        let initialEnergy   = creature.energy
+        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
+        world.creatures     = [creature]
+        world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
+                                          energyValue: 100, type: .plant)]
+        world.plantCount    = 1
+        world.rebuildGrid()
+        world.feedCreatures()
+        #expect(world.foodSources.isEmpty)     // Hunger-Override: Pflanze gefressen
+        #expect(creature.energy > initialEnergy)
+    }
+
+    @Test func hungerInstinctDoesNotForceIndigestibleFood() {
+        // Hungernde Kreatur frisst NICHT, wenn Nahrung unverträglich ist (digestibility < 10%)
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[3] = 0.0  // reiner Herbivore — Leiche digestibility = 0
+        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        creature.energy     = creature.maxEnergy * 0.2  // hungrig
+        let initialEnergy   = creature.energy
+        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
+        world.creatures     = [creature]
+        world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
+                                          energyValue: 100, type: .corpse)]
+        world.corpseCount   = 1
+        world.rebuildGrid()
+        world.feedCreatures()
+        #expect(world.foodSources.count == 1)  // Leiche bleibt — Hunger zwingt nicht zu Gift
+        #expect(creature.energy == initialEnergy)
+    }
+
+    @Test func wrongFoodCausesEnergyPenalty() {
+        // Verdaulichkeit < 10%: Fressen kostet Energie (Übelkeit)
+        var dna = DNA.random(); dna.genes[3] = 0.0  // reiner Pflanzenfresser
+        let creature = Creature(dna: dna, position: .zero)
+        let startEnergy = creature.energy
+        creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse))
+        #expect(creature.energy < startEnergy)
+    }
+
+    @Test func wrongFoodConsumedAndPenalizesInWorld() {
+        // Kreatur frisst falsche Nahrung (wantsToEat=1, lastAction=nil) → Strafe, Nahrung weg
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[3] = 0.0  // Herbivore
+        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        creature.energy = 50  // lastAction=nil → wantsToEat default=1
         world.creatures   = [creature]
         world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
                                         energyValue: 100, type: .corpse)]
         world.corpseCount = 1
         world.rebuildGrid()
         world.feedCreatures()
-        #expect(world.foodSources.count == 1)  // corpse untouched
-        #expect(creature.energy == 1)           // no energy gain
+        #expect(world.foodSources.isEmpty)   // Leiche versucht verdaut → weg
+        #expect(creature.energy < 50)        // Energie gesunken durch Strafkosten
     }
 
-    @Test func carnivoreDoesNotEatPlant() {
-        let world = World(size: CGSize(width: 200, height: 200))
+    @Test func omnivoreEatsBothFoodTypes() {
+        // aggression=0.5 → plant: (1-0.35)*0.6=0.39; corpse: 0.5*0.80=0.40 — beide verwertbar
         var dna = DNA.random()
-        dna.genes[3] = 0.8  // carnivore (aggression > 0.45)
-        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy = 1
-        world.creatures   = [creature]
-        world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
-                                        energyValue: 100, type: .plant)]
-        world.plantCount = 1
-        world.rebuildGrid()
-        world.feedCreatures()
-        #expect(world.foodSources.count == 1)  // plant untouched
-        #expect(creature.energy == 1)           // no energy gain
+        dna.genes[3] = 0.5
+        let creature = Creature(dna: dna, position: .zero)
+
+        creature.energy = 0
+        creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .plant))
+        let plantGain = creature.energy
+        #expect(plantGain > 0)
+
+        creature.energy = 0
+        creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse))
+        let corpseGain = creature.energy
+        #expect(corpseGain > 0)
+
+        // Omnivore ist in beiden Strategien schlechter als der jeweilige Spezialist
+        #expect(plantGain  < 60)   // Herbivore (aggr=0) bekommt 60
+        #expect(corpseGain < 80)   // Carnivore (aggr=1) bekommt 80
+    }
+
+    @Test func specialistOutperformsOmnivoreOnPreferredFood() {
+        var herbDNA = DNA.random(); herbDNA.genes[3] = 0.0
+        var omniDNA = DNA.random(); omniDNA.genes[3] = 0.5
+        var carnDNA = DNA.random(); carnDNA.genes[3] = 1.0
+
+        let herb = Creature(dna: herbDNA, position: .zero)
+        let omni = Creature(dna: omniDNA, position: .zero)
+        let carn = Creature(dna: carnDNA, position: .zero)
+        herb.energy = 0; omni.energy = 0; carn.energy = 0
+
+        let plant = FoodSource(position: .zero, energyValue: 100, type: .plant)
+        herb.eat(food: plant); omni.eat(food: plant)
+        #expect(herb.energy > omni.energy)   // Spezialist gewinnt bei Pflanzen
+
+        omni.energy = 0; carn.energy = 0
+        let corpse = FoodSource(position: .zero, energyValue: 100, type: .corpse)
+        omni.eat(food: corpse); carn.eat(food: corpse)
+        #expect(carn.energy > omni.energy)   // Spezialist gewinnt bei Leichen
     }
 
     // MARK: - World: energy conservation
@@ -211,7 +309,7 @@ struct SwiftolutionTests {
         var dna = DNA.random()
         dna.genes[2] = 0.5  // size = 0.5 → bodyMass starts at 0.5*60+20 = 50
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        let expectedCorpseEnergy = creature.bodyMass * 0.7
+        let expectedCorpseEnergy = creature.bodyMass * 1.0
         creature.energy = -1  // force death (isAlive = energy > 0 → false)
         world.creatures = [creature]
         world.checkDeaths()
@@ -318,12 +416,12 @@ struct SwiftolutionTests {
 
     // MARK: - World: population
 
-    @Test func populateMajorityHerbivores() {
+    @Test func populateAllHerbivores() {
+        // Urknall: alle Startkreaturen sind Pflanzenfresser (aggression ≤ 0.4)
         let world = World(size: CGSize(width: 1000, height: 1000))
         world.populate(creatures: 200, food: 0)
-        let herbivores = world.creatures.filter { $0.dna.aggression <= 0.45 }
-        // ~80% are forced herbivore; allow ≥ 65% to account for the random 20% pool
-        #expect(herbivores.count >= 130)
+        let herbivores = world.creatures.filter { $0.dna.aggression <= 0.4 }
+        #expect(herbivores.count == 200)
     }
 
     @Test func populatePlantCountMatchesFoodArgument() {
@@ -338,7 +436,7 @@ struct SwiftolutionTests {
 
     @Test func corpsesDecayAfterTimeout() {
         let world = World(size: CGSize(width: 200, height: 200))
-        world.tickCount   = 601
+        world.tickCount   = 1201
         world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
                                         energyValue: 50, type: .corpse, spawnedAt: 0)]
         world.corpseCount = 1
@@ -349,7 +447,7 @@ struct SwiftolutionTests {
 
     @Test func corpsesSurviveBeforeTimeout() {
         let world = World(size: CGSize(width: 200, height: 200))
-        world.tickCount   = 100
+        world.tickCount   = 600
         world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
                                         energyValue: 50, type: .corpse, spawnedAt: 0)]
         world.corpseCount = 1

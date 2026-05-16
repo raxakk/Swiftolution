@@ -5,6 +5,7 @@ struct StatSnapshot: Identifiable {
     let id: Int   // tick — eindeutig innerhalb einer Simulation
     let tick: Int
     let herbivores: Int
+    let omnivores:  Int
     let carnivores: Int
     let plantFood: Int
     let corpseFood: Int
@@ -14,6 +15,7 @@ struct StatSnapshot: Identifiable {
     let avgBrainSize: Double
     let avgMaxAge: Double     // Gen-Wert [0,1] — 0 = kurzlebig, 1 = langlebig
     let avgLitterSize: Double // Gen-Wert [0,1] — 0 = K-Stratege, 1 = r-Stratege
+    let avgEnergy: Double     // [0,1] — mittlerer Energiefüllstand
 }
 
 final class StatisticsTracker: ObservableObject {
@@ -26,8 +28,9 @@ final class StatisticsTracker: ObservableObject {
         guard world.tickCount % recordInterval == 0 else { return }
 
         let creatures = world.creatures
-        let herbivores = creatures.filter { $0.dna.aggression <= 0.45 }.count
-        let carnivores = creatures.filter { $0.dna.aggression  > 0.45 }.count
+        let herbivores = creatures.filter { $0.dna.aggression <= 0.33 }.count
+        let omnivores  = creatures.filter { $0.dna.aggression > 0.33 && $0.dna.aggression <= 0.67 }.count
+        let carnivores = creatures.filter { $0.dna.aggression > 0.67 }.count
         let corpseFood = world.foodSources.filter { $0.type == .corpse }.count
         let n = Double(creatures.count)
 
@@ -39,6 +42,7 @@ final class StatisticsTracker: ObservableObject {
             id:            world.tickCount,
             tick:          world.tickCount,
             herbivores:    herbivores,
+            omnivores:     omnivores,
             carnivores:    carnivores,
             plantFood:     world.plantCount,
             corpseFood:    corpseFood,
@@ -47,7 +51,8 @@ final class StatisticsTracker: ObservableObject {
             avgSize:       avg { $0.dna.size },
             avgBrainSize:  avg { $0.dna.brainSize },
             avgMaxAge:     avg { $0.dna.genes[4] },
-            avgLitterSize: avg { $0.dna.genes[10] }
+            avgLitterSize: avg { $0.dna.genes[10] },
+            avgEnergy:     avg { $0.energy / $0.maxEnergy }
         ))
 
         if snapshots.count > maxSnapshots { snapshots.removeFirst() }

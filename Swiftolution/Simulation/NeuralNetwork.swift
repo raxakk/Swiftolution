@@ -7,7 +7,7 @@ struct NeuralNetwork {
     static let inputCount    = 9
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
-    static let outputCount   = 4   // turnAngle, speed, wantsToReproduce, wantsToAttack
+    static let outputCount   = 5   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEat
 
     // DNA speichert immer Gewichte für maxHiddenCount — unabhängig von der tatsächlichen Gehirngröße.
     // So bleibt die DNA-Länge konstant und Crossover funktioniert ohne Sonderbehandlung.
@@ -138,11 +138,13 @@ struct ActionOutput {
     var speed:            Float   // [0,1] → wird auf Pixel/Tick skaliert
     var wantsToReproduce: Float   // > 0.5 = ja
     var wantsToAttack:    Float   // > 0.5 = Angriff auf nächstes Lebewesen
+    var wantsToEat:       Float   // > 0.5 = Nahrung in Reichweite aktiv fressen
 
     init(fromArray arr: [Float]) {
         turnAngle        = arr.count > 0 ? arr[0] : 0.5
         speed            = arr.count > 1 ? arr[1] : 0
         wantsToReproduce = arr.count > 2 ? arr[2] : 0
         wantsToAttack    = arr.count > 3 ? arr[3] : 0
+        wantsToEat       = arr.count > 4 ? arr[4] : 1   // Default: fressen (sicherer Start)
     }
 }
