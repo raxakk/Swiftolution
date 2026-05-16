@@ -12,8 +12,8 @@ final class World {
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
-    private(set) var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
-    private(set) var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
+    var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
+    var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -45,6 +45,8 @@ final class World {
     }
 
     private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
+
+    func rebuildGrid() { grid.rebuild(creatures: creatures, food: foodSources) }
 
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
@@ -165,7 +167,7 @@ final class World {
 
     // MARK: - Angriff
 
-    private func attackCreatures() {
+    func attackCreatures() {
         // Angriffe simultan sammeln damit Reihenfolge keinen Vorteil bringt.
         // Fleischfresser töten Beute durch Schaden — Energie kommt ausschließlich durch Leichenfraß.
         var energyDeltas: [UUID: Float] = [:]
@@ -194,7 +196,7 @@ final class World {
 
     // MARK: - Fressen
 
-    private func feedCreatures() {
+    func feedCreatures() {
         var eatenIDs = Set<UUID>()
         var eatenPlants = 0
         for creature in creatures {
@@ -218,7 +220,7 @@ final class World {
 
     // MARK: - Tod
 
-    private func checkDeaths() {
+    func checkDeaths() {
         // Gompertz-ähnliche Sterblichkeit: kleines Grundrisiko + exponentiell steigendes Altersrisiko.
         // Ein Pass — kein UUID-Set, kein zweites Iterieren.
         var survivors: [Creature] = []
@@ -241,7 +243,7 @@ final class World {
 
     // MARK: - Fortpflanzung
 
-    private func reproduceCreatures() {
+    func reproduceCreatures() {
         guard creatures.count < maxPopulation else { return }
 
         var mated    = Set<UUID>()
@@ -310,7 +312,7 @@ final class World {
 
     // MARK: - Nahrungswachstum
 
-    private func growFood() {
+    func growFood() {
         let fillRatio = Double(plantCount) / Double(maxFood)
         let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
         for _ in 0..<max(0, newItems) {
@@ -319,7 +321,7 @@ final class World {
         }
     }
 
-    private func decayFood() {
+    func decayFood() {
         // Leichen verrotten und verschwinden — keine Energieentstehung.
         var decayed = 0
         foodSources.removeAll {
