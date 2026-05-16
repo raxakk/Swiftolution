@@ -16,7 +16,7 @@ final class SimulationEngine: ObservableObject {
 
     // MARK: - Private Properties
 
-    private var world  = World(size: CGSize(width: 1200, height: 900))
+    private var world  = World(size: CGSize(width: 2400, height: 1800))
     private var timer: AnyCancellable?
     private(set) var isPaused = false
     private var speedMultiplier: Double = 1.0
@@ -161,8 +161,8 @@ struct SimulationConfig {
     var seasonAmplitude: Float = 0.70   // 0 = kein Effekt, 1 = Winter → 0% Wachstum
 
     // Erst beim Neustart wirksam
-    var worldWidth:       Int = 1200
-    var worldHeight:      Int = 900
+    var worldWidth:       Int = 2400
+    var worldHeight:      Int = 1800
     var initialCreatures: Int = 80
     // Startnahrung = immer world.maxFood — Welt startet vollständig bepflanzt
 }
