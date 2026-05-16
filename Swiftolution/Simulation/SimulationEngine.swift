@@ -16,7 +16,7 @@ final class SimulationEngine: ObservableObject {
 
     // MARK: - Private Properties
 
-    private var world  = World(size: CGSize(width: 2400, height: 1800))
+    private var world  = World(size: CGSize(width: 1200, height: 900))
     private var timer: AnyCancellable?
     private(set) var isPaused = false
     private var speedMultiplier: Double = 1.0
@@ -30,7 +30,7 @@ final class SimulationEngine: ObservableObject {
 
     init() {
         syncConfigToWorld()
-        world.populate(creatures: config.initialCreatures, food: config.initialFood)
+        world.populate(creatures: config.initialCreatures, food: world.maxFood)
         scene.setup(world: world)
         scene.onCreatureSelected = { [weak self] id in self?.selectCreature(id: id) }
         startTimer()
@@ -46,7 +46,7 @@ final class SimulationEngine: ObservableObject {
         timer?.cancel()
         world = World(size: CGSize(width: config.worldWidth, height: config.worldHeight))
         syncConfigToWorld()
-        world.populate(creatures: config.initialCreatures, food: config.initialFood)
+        world.populate(creatures: config.initialCreatures, food: world.maxFood)
         scene.reset(world: world)
         stats = SimulationStats()
         tracker.reset()
@@ -150,8 +150,8 @@ final class SimulationEngine: ObservableObject {
 
 struct SimulationConfig {
     // Sofort wirksam (live)
-    var foodCapacity:     Int    = 250
-    var foodGrowthRate:   Double = 0.03
+    var foodCapacity:     Int    = 500     // Referenz für 800×600; skaliert mit √(Weltfläche)
+    var foodGrowthRate:   Double = 0.05
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
 
@@ -161,10 +161,10 @@ struct SimulationConfig {
     var seasonAmplitude: Float = 0.70   // 0 = kein Effekt, 1 = Winter → 0% Wachstum
 
     // Erst beim Neustart wirksam
-    var worldWidth:       Int = 2400
-    var worldHeight:      Int = 1800
+    var worldWidth:       Int = 1200
+    var worldHeight:      Int = 900
     var initialCreatures: Int = 80
-    var initialFood:      Int = 250
+    // Startnahrung = immer world.maxFood — Welt startet vollständig bepflanzt
 }
 
 // MARK: - Kreatur-Snapshot (für Inspektion)

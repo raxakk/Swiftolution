@@ -44,12 +44,13 @@ final class World {
         }
     }
 
-    private lazy var grid = SpatialGrid(cellSize: 80, worldSize: size)
+    private var grid: SpatialGrid
 
     func rebuildGrid() { grid.rebuild(creatures: creatures, food: foodSources) }
 
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
+        self.grid = SpatialGrid(cellSize: 80, worldSize: size)
     }
 
     // MARK: - Setup
@@ -87,10 +88,23 @@ final class World {
     // MARK: - Bewegung & Wahrnehmung
 
     private func moveCreatures() {
-        for creature in creatures {
-            let input  = sense(for: creature)
-            let output = creature.brain.activate(inputs: input)
-            creature.apply(output: output, in: self)
+        let count = creatures.count
+        guard count > 0 else { return }
+
+        // Phase 1 — Parallel: Wahrnehmung + NN-Aktivierung.
+        // Jede Kreatur liest nur ihren eigenen Zustand und den unveränderlichen Grid — kein Data Race.
+        // withUnsafeMutableBufferPointer fixiert den Array-Puffer → COW-freier Schreibzugriff aus n Threads.
+        var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0]), count: count)
+        outputs.withUnsafeMutableBufferPointer { buf in
+            DispatchQueue.concurrentPerform(iterations: count) { [self] i in
+                let input = sense(for: creatures[i])
+                buf[i] = creatures[i].brain.activate(inputs: input)
+            }
+        }
+
+        // Phase 2 — Sequential: Position und Zustand schreiben (Positionsänderungen beeinflussen den Tick).
+        for (i, creature) in creatures.enumerated() {
+            creature.apply(output: outputs[i], in: self)
             creature.tick()
         }
     }
@@ -168,9 +182,8 @@ final class World {
     // MARK: - Angriff
 
     func attackCreatures() {
-        // Angriffe simultan sammeln damit Reihenfolge keinen Vorteil bringt.
-        // Fleischfresser töten Beute durch Schaden — Energie kommt ausschließlich durch Leichenfraß.
-        var energyDeltas: [UUID: Float] = [:]
+        // ObjectIdentifier: Pointer-Hash (8 Byte) statt UUID-Hash (16 Byte) — doppelt so schnell.
+        var energyDeltas = [ObjectIdentifier: Float](minimumCapacity: creatures.count)
 
         for attacker in creatures {
             guard let action = attacker.lastAction,
@@ -184,12 +197,12 @@ final class World {
             let defense   = min(victim.dna.aggression * 0.9, 0.92)
             let damage    = rawDamage * (1 - defense)
 
-            energyDeltas[attacker.id, default: 0] -= attacker.dna.aggression * 6
-            energyDeltas[victim.id,   default: 0] -= damage
+            energyDeltas[ObjectIdentifier(attacker), default: 0] -= attacker.dna.aggression * 6
+            energyDeltas[ObjectIdentifier(victim),   default: 0] -= damage
         }
 
         for creature in creatures {
-            guard let delta = energyDeltas[creature.id] else { continue }
+            guard let delta = energyDeltas[ObjectIdentifier(creature)] else { continue }
             creature.energy = max(0, min(creature.energy + delta, creature.maxEnergy))
         }
     }
@@ -246,7 +259,8 @@ final class World {
     func reproduceCreatures() {
         guard creatures.count < maxPopulation else { return }
 
-        var mated    = Set<UUID>()
+        // ObjectIdentifier statt UUID: Pointer-Vergleich, kein 16-Byte-Hash.
+        var mated    = Set<ObjectIdentifier>(minimumCapacity: 64)
         var newborns = [Creature]()
 
         // Nur Lebewesen die Energie haben UND deren NN reproduzieren "will"
@@ -255,20 +269,23 @@ final class World {
             .shuffled()
 
         for parent in candidates {
-            guard !mated.contains(parent.id) else { continue }
+            guard !mated.contains(ObjectIdentifier(parent)) else { continue }
             guard creatures.count + newborns.count < maxPopulation else { break }
 
-            let partner = candidates.first {
-                $0 != parent
-                && !mated.contains($0.id)
-                && distance($0.position, parent.position) < 40
-                && abs($0.dna.aggression - parent.dna.aggression) < 0.3   // Artkompatibilität
-            }
+            // Grid-Abfrage statt O(candidates.count)-Scan: Partner wird räumlich gesucht.
+            let partner = grid.nearbyCreatures(to: parent.position, within: 40)
+                .first {
+                    $0 !== parent
+                    && !mated.contains(ObjectIdentifier($0))
+                    && ($0.lastAction?.wantsToReproduce ?? 0) > 0.5
+                    && $0.canReproduce
+                    && abs($0.dna.aggression - parent.dna.aggression) < 0.3
+                }
 
             if let partner {
                 // Sexuelle Fortpflanzung: Gene beider Eltern werden kombiniert
-                mated.insert(parent.id)
-                mated.insert(partner.id)
+                mated.insert(ObjectIdentifier(parent))
+                mated.insert(ObjectIdentifier(partner))
                 let midPoint = CGPoint(x: (parent.position.x + partner.position.x) / 2,
                                        y: (parent.position.y + partner.position.y) / 2)
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
@@ -289,7 +306,7 @@ final class World {
                 partner.energy -= partner.maxEnergy * costPerParent
             } else {
                 // Asexuell als Fallback — Elternteil investiert 40%, verteilt auf Wurf
-                mated.insert(parent.id)
+                mated.insert(ObjectIdentifier(parent))
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
                 let cost: Float = 0.40
                 let perChildEnergy = parent.maxEnergy * cost / Float(litter)

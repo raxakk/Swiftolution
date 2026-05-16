@@ -112,7 +112,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.foodCapacity) },
                             set: { engine.config.foodCapacity = Int($0) }
                         ),
-                        range: 50...600
+                        range: 100...1500
                     )
 
                     ParamSlider(
@@ -186,7 +186,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.worldWidth) },
                             set: { engine.config.worldWidth = Int($0) }
                         ),
-                        range: 800...4800
+                        range: 600...4800
                     )
                     ParamSlider(
                         label: "Welthöhe",
@@ -195,7 +195,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.worldHeight) },
                             set: { engine.config.worldHeight = Int($0) }
                         ),
-                        range: 600...3600
+                        range: 400...3600
                     )
                     ParamSlider(
                         label: "Startpopulation",
@@ -205,15 +205,6 @@ struct SidebarView: View {
                             set: { engine.config.initialCreatures = Int($0) }
                         ),
                         range: 10...1000
-                    )
-                    ParamSlider(
-                        label: "Startnahrung",
-                        displayValue: "\(engine.config.initialFood)",
-                        value: Binding(
-                            get: { Double(engine.config.initialFood) },
-                            set: { engine.config.initialFood = Int($0) }
-                        ),
-                        range: 50...800
                     )
                 }
 
