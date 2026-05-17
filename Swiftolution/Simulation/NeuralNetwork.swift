@@ -4,7 +4,7 @@ struct NeuralNetwork {
 
     // MARK: - Architektur
 
-    static let inputCount    = 13
+    static let inputCount    = 15
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
     static let outputCount   = 5   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEat
@@ -128,13 +128,15 @@ struct SensorInput {
     var nearestCreatureGreen:      Float
     var nearestCreatureBlue:       Float
     var visibleCreatureCount:      Float   // normiert [0,1]: min(Anzahl, 10) / 10
+    var ownSenescence:             Float   // 0 = jung, 1 = hoch gealtert
+    var visibleFoodCount:          Float   // normiert [0,1]: min(Anzahl, 10) / 10
 
     func toArray() -> [Float] {
         [angleToFood, distanceToFood, angleToCreature, distanceToCreature,
          ownEnergy, localDensity, approachVelocity,
          nearestFoodType, avgNearbyHeading,
          nearestCreatureRed, nearestCreatureGreen, nearestCreatureBlue,
-         visibleCreatureCount]
+         visibleCreatureCount, ownSenescence, visibleFoodCount]
     }
 }
 

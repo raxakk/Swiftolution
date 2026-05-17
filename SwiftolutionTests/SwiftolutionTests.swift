@@ -78,7 +78,9 @@ struct SwiftolutionTests {
                 nearestCreatureRed:   Float.random(in: 0...1),
                 nearestCreatureGreen: Float.random(in: 0...1),
                 nearestCreatureBlue:  Float.random(in: 0...1),
-                visibleCreatureCount: Float.random(in: 0...1)
+                visibleCreatureCount: Float.random(in: 0...1),
+                ownSenescence:        Float.random(in: 0...1),
+                visibleFoodCount:     Float.random(in: 0...1)
             )
             let out = nn.activate(inputs: input)
             #expect((0...1).contains(out.turnAngle))

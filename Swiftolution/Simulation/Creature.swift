@@ -50,9 +50,7 @@ final class Creature {
         NeuralNetwork.minHiddenCount +
         Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
     }
-    // Herbivoren sind schneller — in der Natur evolut Beute zur Flucht, Räuber zur Ausdauer.
-    // aggression=0 → +20% Geschwindigkeit, aggression=1 → -20% Geschwindigkeit
-    var maxSpeed:     Float   { dna.speed * 2.5 * (1.2 - dna.aggression * 0.4) + 0.3 }
+    var maxSpeed:     Float   { dna.speed * 2.5 + 0.3 }
 
     var canReproduce: Bool {
         // reproductionThreshold-Gen [0,1] skaliert auf 55%–85% der maximalen Energie

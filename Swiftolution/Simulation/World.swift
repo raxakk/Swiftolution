@@ -175,6 +175,7 @@ final class World {
             nearestCreatureBlue  = other.dna.blue
         }
         let visibleCreatureCount = min(Float(creaturesInFOV.count), 10) / 10
+        let visibleFoodCount     = min(Float(foodInFOV.count), 10) / 10
 
         // Dichte + Herding: omnidirektional — Druckwellen/Vibrationen, kein Sichtkegel nötig
         let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
@@ -201,7 +202,9 @@ final class World {
             nearestCreatureRed:   nearestCreatureRed,
             nearestCreatureGreen: nearestCreatureGreen,
             nearestCreatureBlue:  nearestCreatureBlue,
-            visibleCreatureCount: visibleCreatureCount
+            visibleCreatureCount: visibleCreatureCount,
+            ownSenescence:        min(creature.senescence, 1),
+            visibleFoodCount:     visibleFoodCount
         )
     }
 
