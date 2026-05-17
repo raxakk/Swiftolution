@@ -120,14 +120,16 @@ final class Creature {
 
     private func consumeEnergy() {
         let baseCost:       Float = 0.08
-        let sizeCost:       Float = dna.size * 0.06
-        // Bewegung skaliert mit Masse: groß+schnell verbrennt überproportional viel Energie.
+        // Statische Wartungskosten: quadratisch skaliert (gen² × 2 × alte_Konstante).
+        // gene=0.5 → identisch zu vorher; gene=1.0 → doppelt so teuer.
+        // Erzwingt Spezialisierung — alles auf Maximum ist überproportional teuer.
+        let s = dna.size;       let sizeCost:       Float = s * s * 0.12
+        let ag = dna.aggression; let aggressionCost: Float = ag * ag * 0.18
+        let br = dna.brainSize;  let brainCost:      Float = br * br * 0.04
+        let sr = dna.sightRadius; let sa = dna.sightAngle
+        let sightCost:      Float = sr * sr * 0.024 + sa * sa * 0.030
+        // Dynamische Kosten bleiben linear — abhängig vom tatsächlichen Verhalten, nicht nur vom Gen.
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
-        let aggressionCost: Float = dna.aggression * 0.09
-        let brainCost:      Float = dna.brainSize * 0.02
-        // Sichtsystem: langer Radius + breiter Winkel kosten mehr (neuronale Verarbeitung, Augenmuskeln).
-        let sightCost:      Float = dna.sightRadius * 0.012 + dna.sightAngle * 0.015
-        // Drehkosten: tatsächliche Rotation × Wendigkeitsgen — schnelle Wendung kostet Muskeln.
         let actualTurn      = abs((lastAction?.turnAngle ?? 0.5) - 0.5) * 2   // [0,1]
         let turnCost:       Float = actualTurn * maxTurnRate * 0.08
         let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + turnCost
