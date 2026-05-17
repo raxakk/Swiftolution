@@ -50,10 +50,11 @@ final class CreatureNode: SKNode {
                                      size: CGSize(width: radius + 5, height: 1.5))
         directionLine.anchorPoint = CGPoint(x: 0, y: 0.5)
 
-        // Sichtradius-Ring und Auswahlring — nur bei Selektion sichtbar
-        sightNode             = SKShapeNode(circleOfRadius: creature.sightRadius)
-        sightNode.fillColor   = .clear
-        sightNode.strokeColor = bodyColor.withAlphaComponent(0.18)
+        // Sichtkegel — nur bei Selektion sichtbar; Pfad wird in sync() aktualisiert
+        sightNode             = SKShapeNode(path: CreatureNode.fovPath(radius: creature.sightRadius,
+                                                                        angle: creature.sightAngle))
+        sightNode.fillColor   = bodyColor.withAlphaComponent(0.07)
+        sightNode.strokeColor = bodyColor.withAlphaComponent(0.30)
         sightNode.lineWidth   = 0.5
         sightNode.isHidden    = true
 
@@ -80,6 +81,9 @@ final class CreatureNode: SKNode {
         position  = creature.position
         zRotation = CGFloat(creature.heading)
         bodySprite.alpha = 0.35 + CGFloat(creature.energy / creature.maxEnergy) * 0.65
+        if !sightNode.isHidden {
+            sightNode.path = CreatureNode.fovPath(radius: creature.sightRadius, angle: creature.sightAngle)
+        }
     }
 
     func setSelected(_ selected: Bool) {
@@ -121,6 +125,24 @@ final class CreatureNode: SKNode {
     }
 
     // MARK: - Form-Generator
+
+    // Erzeugt den Sichtkegel-Pfad: Tortenstück entlang der +X-Achse (Blickrichtung).
+    // Das Elternteil rotiert per zRotation=heading, daher zeigt der Kegel immer nach vorne.
+    // Bei ≥ 360° wird ein Vollkreis gezeichnet.
+    static func fovPath(radius: CGFloat, angle: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        if angle >= 2 * .pi * 0.995 {
+            path.addEllipse(in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
+        } else {
+            let half = angle / 2
+            path.move(to: .zero)
+            // Bogen von -half bis +half um die +X-Achse (= Blickrichtung bei zRotation=0)
+            path.addArc(center: .zero, radius: radius,
+                        startAngle: -half, endAngle: half, clockwise: false)
+            path.closeSubpath()
+        }
+        return path
+    }
 
     // Erzeugt einen Stern-Pfad mit `spikes` Zacken.
     // Erster äußerer Punkt bei Winkel 0 (→ rechts), damit die Spitze mit zRotation=heading zeigt.

@@ -164,6 +164,25 @@ struct SidebarView: View {
                             range: 0.1...1.0
                         )
                     }
+
+                    Toggle("Mindest-Spawn", isOn: Binding(
+                        get: { engine.config.minSpawnEnabled },
+                        set: { engine.config.minSpawnEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
+
+                    if engine.config.minSpawnEnabled {
+                        ParamSlider(
+                            label: "Schwellenwert",
+                            displayValue: "\(engine.config.minSpawnThreshold) Kreaturen",
+                            value: Binding(
+                                get: { Double(engine.config.minSpawnThreshold) },
+                                set: { engine.config.minSpawnThreshold = Int($0) }
+                            ),
+                            range: 1...30
+                        )
+                    }
                 }
 
                 // MARK: Evolution (sofort wirksam)

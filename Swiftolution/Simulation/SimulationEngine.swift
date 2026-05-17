@@ -95,6 +95,8 @@ final class SimulationEngine: ObservableObject {
         world.seasonEnabled    = config.seasonEnabled
         world.seasonLength     = config.seasonLength
         world.seasonAmplitude  = config.seasonAmplitude
+        world.minSpawnEnabled   = config.minSpawnEnabled
+        world.minSpawnThreshold = config.minSpawnThreshold
     }
 
     // MARK: - Loop
@@ -160,6 +162,8 @@ struct SimulationConfig {
     var foodGrowthRate:   Double = 0.05
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
+    var minSpawnEnabled:   Bool  = false
+    var minSpawnThreshold: Int   = 5
 
     // Jahreszeiten (sofort wirksam)
     var seasonEnabled:   Bool  = false
@@ -188,6 +192,10 @@ struct CreatureSnapshot {
     let aggression:       Float
     let sightRadiusGene:  Float   // Rohwert [0,1]
     let sightRadiusPx:    Float   // berechneter Radius in Pixeln (inkl. Seneszenz)
+    let sightAngleGene:   Float   // Rohwert [0,1]
+    let sightAngleDeg:    Int     // berechneter Winkel in Grad
+    let turnRateGene:     Float   // Rohwert [0,1]
+    let turnRateDeg:      Float   // berechneter Wert in Grad/Tick
     let maxAgeGene:       Float   // [0,1] — zeigt Lebensstrategien-Pol
     let reproThreshold:   Float
     let litterSize:       Int
@@ -212,6 +220,10 @@ struct CreatureSnapshot {
         aggression    = c.dna.aggression
         sightRadiusGene = c.dna.sightRadius
         sightRadiusPx   = Float(c.sightRadius)
+        sightAngleGene  = c.dna.sightAngle
+        sightAngleDeg   = Int((c.sightAngle * 180 / .pi).rounded())
+        turnRateGene    = c.dna.turnRate
+        turnRateDeg     = c.maxTurnRate * 180 / .pi
         maxAgeGene    = c.dna.genes[4]
         reproThreshold = c.dna.reproductionThreshold
         litterSize    = c.dna.litterSize

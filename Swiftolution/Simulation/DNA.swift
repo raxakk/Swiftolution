@@ -18,10 +18,13 @@ struct DNA {
     var green:                 Float { genes[8] }
     var blue:                  Float { genes[9] }
     // 0 → 1 Nachkomme (r-Stratege: viele, billige Nachkommen), 1 → 4 (K-Stratege: wenige, teure)
-    // Wurfgröße skaliert 1–4; Kosten pro Nachkomme steigen mit der Wurfgröße.
     var litterSize:            Int   { max(1, Int(genes[10] * 3) + 1) }   // [1, 4]
+    // Sichtwinkel: gene=0 → 120° (schmaler Vorwärtskegel), gene=1 → 360° (Vollkreis)
+    var sightAngle:            Float { genes[11] }
+    // Drehgeschwindigkeit: gene=0 → 0.05 rad/Tick (träge), gene=1 → 0.40 rad/Tick (wendig)
+    var turnRate:              Float { genes[12] }
 
-    static let neuralWeightsStartIndex = 11
+    static let neuralWeightsStartIndex = 13
 
     static func totalLength(networkWeightCount: Int) -> Int {
         neuralWeightsStartIndex + networkWeightCount

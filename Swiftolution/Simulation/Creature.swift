@@ -36,6 +36,14 @@ final class Creature {
 
     var eatRadius:    CGFloat { CGFloat(dna.size * 8 + 4) }
     var sightRadius:  CGFloat { CGFloat((dna.sightRadius * 120 + 40) * max(0.3, 1 - senescence * 0.4)) }
+    // Drehgeschwindigkeit in rad/Tick; Seneszenz macht Kreatur träger
+    var maxTurnRate:  Float   { (dna.turnRate * 0.35 + 0.05) * max(0.3, 1 - senescence * 0.4) }
+    // Sichtwinkel in Radian: gene=0 → 120° (2π/3), gene=1 → 360° (2π)
+    // Breiter Winkel = hohe Energiekosten; schmaler Kegel = günstig, aber blind nach hinten/seitlich.
+    var sightAngle:   CGFloat {
+        let minAngle: CGFloat = 2 * .pi / 3   // 120° Minimum
+        return CGFloat(dna.sightAngle) * (2 * .pi - minAngle) + minAngle
+    }
     var attackRadius: CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
     var hiddenCount:  Int     {
@@ -75,7 +83,6 @@ final class Creature {
     func apply(output: ActionOutput, in world: World) {
         lastAction = output
 
-        let maxTurnRate: Float = 0.2
         heading += (output.turnAngle - 0.5) * 2 * maxTurnRate
 
         let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3)
@@ -115,11 +122,15 @@ final class Creature {
         let baseCost:       Float = 0.08
         let sizeCost:       Float = dna.size * 0.06
         // Bewegung skaliert mit Masse: groß+schnell verbrennt überproportional viel Energie.
-        // size=0 → 1×, size=0.5 → 1.4×, size=1 → 1.8× Bewegungskosten
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
         let aggressionCost: Float = dna.aggression * 0.09
         let brainCost:      Float = dna.brainSize * 0.02
-        let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost
+        // Sichtsystem: langer Radius + breiter Winkel kosten mehr (neuronale Verarbeitung, Augenmuskeln).
+        let sightCost:      Float = dna.sightRadius * 0.012 + dna.sightAngle * 0.015
+        // Drehkosten: tatsächliche Rotation × Wendigkeitsgen — schnelle Wendung kostet Muskeln.
+        let actualTurn      = abs((lastAction?.turnAngle ?? 0.5) - 0.5) * 2   // [0,1]
+        let turnCost:       Float = actualTurn * maxTurnRate * 0.08
+        let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + turnCost
         energy -= baseCosts * (1 + senescence * 0.5)
 
         // Gut ernährt (>60%): Körpermasse aufbauen. Verhungernd (<20%): Muskelkatabolismus.

@@ -20,6 +20,8 @@ final class World {
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
     var maxPopulation:    Int    = 300
+    var minSpawnEnabled:   Bool = false
+    var minSpawnThreshold: Int  = 5
 
     // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
     var seasonEnabled:   Bool  = false
@@ -79,6 +81,7 @@ final class World {
         attackCreatures()
         feedCreatures()
         checkDeaths()
+        spawnMinimumIfNeeded()
         reproduceCreatures()
         growFood()
         decayFood()
@@ -109,38 +112,51 @@ final class World {
     }
 
     // Baut den Sensor-Input für ein Lebewesen auf.
-    // Nur Objekte innerhalb des Sichtradius werden wahrgenommen.
+    // Nahrung und nächste Kreatur werden nur im Sichtkegel wahrgenommen (FOV).
+    // Dichte und Herding-Richtung sind omnidirektional (Tastsinn / Druckwellen).
     private func sense(for creature: Creature) -> SensorInput {
-        let sightR = Float(creature.sightRadius)
+        let sightR    = Float(creature.sightRadius)
+        let halfAngle = creature.sightAngle / 2
+        let isFull    = creature.sightAngle >= 2 * .pi * 0.995
 
-        var angleToFood:  Float = 0
-        var distToFood:   Float = 1
-        var nearestFoodType: Float = 0   // 0 = Pflanze, 1 = Leiche
-        if let food = nearestFood(to: creature.position, within: creature.sightRadius) {
-            let dx = Float(food.position.x - creature.position.x)
-            let dy = Float(food.position.y - creature.position.y)
-            let relAngle = normalizeAngle(atan2(dy, dx) - creature.heading)
-            angleToFood      = relAngle / .pi
-            distToFood       = Float(distance(creature.position, food.position)) / sightR
-            nearestFoodType  = food.type == .corpse ? 1.0 : 0.0
+        // Prüft ob eine Position im Sichtkegel liegt.
+        func inFOV(at pos: CGPoint) -> Bool {
+            guard !isFull else { return true }
+            let dx = Float(pos.x - creature.position.x)
+            let dy = Float(pos.y - creature.position.y)
+            return abs(normalizeAngle(atan2(dy, dx) - creature.heading)) <= Float(halfAngle)
         }
 
-        // Eine einzige Grid-Abfrage für alle drei Kreatur-Sensoren (Nearest, Dichte, Heading).
-        // Radius = max(sightRadius, 80px), danach per Distanz gefiltert.
-        // === statt UUID-Vergleich — Pointer-Identity ist O(1) ohne Hashing.
+        // Nahrung im Sichtkegel
+        var angleToFood:     Float = 0
+        var distToFood:      Float = 1
+        var nearestFoodType: Float = 0
+        let foodInFOV = grid.nearbyFood(to: creature.position, within: creature.sightRadius)
+            .filter { distance($0.position, creature.position) < creature.sightRadius && inFOV(at: $0.position) }
+        if let food = foodInFOV.min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
+            let dx = Float(food.position.x - creature.position.x)
+            let dy = Float(food.position.y - creature.position.y)
+            let relAngle    = normalizeAngle(atan2(dy, dx) - creature.heading)
+            angleToFood     = relAngle / .pi
+            distToFood      = Float(distance(creature.position, food.position)) / sightR
+            nearestFoodType = food.type == .corpse ? 1.0 : 0.0
+        }
+
+        // Eine Grid-Abfrage für alle Kreatur-Sensoren.
+        // Radius = max(sightRadius, 80px) für Dichte/Herding-Sensoren.
         let crQueryRadius = max(creature.sightRadius, 80)
         let nearbyAll = grid.nearbyCreatures(to: creature.position, within: crQueryRadius)
                             .filter { $0 !== creature }
 
+        // Nächste Kreatur im Sichtkegel (visuell)
         var angleToCreature:  Float = 0
         var distToCreature:   Float = 1
         var approachVelocity: Float = 0
-        let inSight = creature.sightRadius
-        if let other = nearbyAll
-                .filter({ distance($0.position, creature.position) < inSight })
-                .min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
-            let dx = Float(other.position.x - creature.position.x)
-            let dy = Float(other.position.y - creature.position.y)
+        let creaturesInFOV = nearbyAll
+            .filter { distance($0.position, creature.position) < creature.sightRadius && inFOV(at: $0.position) }
+        if let other = creaturesInFOV.min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
+            let dx   = Float(other.position.x - creature.position.x)
+            let dy   = Float(other.position.y - creature.position.y)
             let dist = Float(distance(creature.position, other.position))
             angleToCreature = normalizeAngle(atan2(dy, dx) - creature.heading) / .pi
             distToCreature  = dist / sightR
@@ -153,10 +169,10 @@ final class World {
             }
         }
 
+        // Dichte + Herding: omnidirektional — Druckwellen/Vibrationen, kein Sichtkegel nötig
         let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
         let localDensity = min(Float(densityCount) / 8.0, 1.0)
 
-        // Circular mean der Bewegungsrichtungen aller Nachbarn im 80px-Radius.
         let neighbors80 = nearbyAll.filter { distance($0.position, creature.position) < 80 }
         var avgNearbyHeading: Float = 0
         if !neighbors80.isEmpty {
@@ -260,6 +276,18 @@ final class World {
             }
         }
         creatures = survivors
+    }
+
+    // MARK: - Mindest-Spawn
+
+    private func spawnMinimumIfNeeded() {
+        guard minSpawnEnabled, creatures.count < minSpawnThreshold else { return }
+        let count = minSpawnThreshold - creatures.count
+        for _ in 0..<count {
+            var dna = DNA.random()
+            dna.genes[3] = Float.random(in: 0...0.4)   // immer Pflanzenfresser
+            creatures.append(Creature(dna: dna, position: randomPosition()))
+        }
     }
 
     // MARK: - Fortpflanzung

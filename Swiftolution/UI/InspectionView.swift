@@ -44,6 +44,10 @@ struct InspectionView: View {
             TraitBar(label: "Aggression",        value: snapshot.aggression,    color: .red)
             TraitBar(label: "Sichtweite",        value: snapshot.sightRadiusGene, color: .purple,
                      displayOverride: String(format: "%.0f px", snapshot.sightRadiusPx))
+            TraitBar(label: "Sichtwinkel",       value: snapshot.sightAngleGene,  color: .purple,
+                     displayOverride: "\(snapshot.sightAngleDeg)°")
+            TraitBar(label: "Wendigkeit",        value: snapshot.turnRateGene,    color: .cyan,
+                     displayOverride: String(format: "%.1f°/Tick", snapshot.turnRateDeg))
             TraitBar(label: "Lebenserwartung",   value: snapshot.maxAgeGene,    color: .mint,
                      displayOverride: "\(snapshot.maxAge) Ticks")
             TraitBar(label: "Fortpfl.-Schwelle", value: snapshot.reproThreshold, color: .teal)
