@@ -188,12 +188,9 @@ struct SwiftolutionTests {
     }
 
     @Test func wantsToEatFalseSkipsFood() {
-        // Gut ernährte Kreatur mit wantsToEat=0 lässt Nahrung in Reichweite liegen.
-        // Hungerinstinkt greift nicht: Energie > 40% → kein Override.
         let world = World(size: CGSize(width: 200, height: 200))
         var dna = DNA.random(); dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy     = creature.maxEnergy * 0.7  // well-fed — nicht hungrig
         let initialEnergy   = creature.energy
         creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
         world.creatures     = [creature]
@@ -202,43 +199,7 @@ struct SwiftolutionTests {
         world.plantCount    = 1
         world.rebuildGrid()
         world.feedCreatures()
-        #expect(world.foodSources.count == 1)  // Nahrung unberührt
-        #expect(creature.energy == initialEnergy)
-    }
-
-    @Test func hungerInstinctOverridesWantsToEatForDigestibleFood() {
-        // Hungernde Kreatur (<40% Energie) frisst verdauliche Nahrung auch wenn wantsToEat=0
-        let world = World(size: CGSize(width: 200, height: 200))
-        var dna = DNA.random(); dna.genes[3] = 0.0  // Herbivore — kann Pflanzen verdauen
-        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy     = creature.maxEnergy * 0.2  // hungrig (<40%)
-        let initialEnergy   = creature.energy
-        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
-        world.creatures     = [creature]
-        world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
-                                          energyValue: 100, type: .plant)]
-        world.plantCount    = 1
-        world.rebuildGrid()
-        world.feedCreatures()
-        #expect(world.foodSources.isEmpty)     // Hunger-Override: Pflanze gefressen
-        #expect(creature.energy > initialEnergy)
-    }
-
-    @Test func hungerInstinctDoesNotForceIndigestibleFood() {
-        // Hungernde Kreatur frisst NICHT, wenn Nahrung unverträglich ist (digestibility < 10%)
-        let world = World(size: CGSize(width: 200, height: 200))
-        var dna = DNA.random(); dna.genes[3] = 0.0  // reiner Herbivore — Leiche digestibility = 0
-        let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy     = creature.maxEnergy * 0.2  // hungrig
-        let initialEnergy   = creature.energy
-        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
-        world.creatures     = [creature]
-        world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
-                                          energyValue: 100, type: .corpse)]
-        world.corpseCount   = 1
-        world.rebuildGrid()
-        world.feedCreatures()
-        #expect(world.foodSources.count == 1)  // Leiche bleibt — Hunger zwingt nicht zu Gift
+        #expect(world.foodSources.count == 1)
         #expect(creature.energy == initialEnergy)
     }
 

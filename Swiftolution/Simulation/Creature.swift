@@ -31,6 +31,7 @@ final class Creature {
         return max(0, (progress - 0.7) / 0.3)
     }
     var lastAction: ActionOutput?
+    weak var lastAttacker: Creature?
 
     // MARK: - Abgeleitete Werte aus DNA
 
@@ -75,6 +76,7 @@ final class Creature {
 
     func tick() {
         age += 1
+        lastAttacker = nil
         consumeEnergy()
     }
 

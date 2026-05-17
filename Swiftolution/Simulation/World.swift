@@ -229,6 +229,7 @@ final class World {
 
             energyDeltas[ObjectIdentifier(attacker), default: 0] -= attacker.dna.aggression * 2
             energyDeltas[ObjectIdentifier(victim),   default: 0] -= damage
+            victim.lastAttacker = attacker
         }
 
         for creature in creatures {
@@ -246,13 +247,8 @@ final class World {
             for food in grid.nearbyFood(to: creature.position, within: creature.eatRadius) {
                 guard !eatenIDs.contains(food.id) else { continue }
                 guard distance(creature.position, food.position) < creature.eatRadius else { continue }
-                // Hungerinstinkt: verhungernde Lebewesen (<40% Energie) fressen immer, wenn sie die
-                // Nahrung verdauen können — Überleben schlägt Lernverhalten.
-                // Gut ernährte Lebewesen folgen ihrem NN: Evolution lernt schlechte Nahrung zu meiden.
-                let isHungry   = creature.energy < creature.maxEnergy * 0.4
-                let canDigest  = creature.digestibility(for: food) >= 0.10
                 let wantsToEat = (creature.lastAction?.wantsToEat ?? 1.0) > 0.5
-                guard (isHungry && canDigest) || wantsToEat else { continue }
+                guard wantsToEat else { continue }
                 creature.eat(food: food)
                 if food.type == .plant { eatenPlants += 1 }
                 eatenIDs.insert(food.id)
@@ -281,11 +277,21 @@ final class World {
             } else {
                 totalDeaths += 1
                 if creature.bodyMass > 1 {
-                    foodSources.append(FoodSource(position: creature.position,
-                                                  energyValue: creature.bodyMass * 1.0,
-                                                  type: .corpse,
-                                                  spawnedAt: tickCount))
-                    corpseCount += 1
+                    var corpseEnergy = creature.bodyMass
+                    if let killer = creature.lastAttacker, killer.isAlive {
+                        // Angreifer frisst direkt beim Kill — Anteil proportional zur Aggression.
+                        // Energie wird von der Leiche abgezogen, nicht neu erzeugt.
+                        let bonus = creature.bodyMass * killer.dna.aggression * 0.4
+                        killer.energy = min(killer.energy + bonus, killer.maxEnergy)
+                        corpseEnergy -= bonus
+                    }
+                    if corpseEnergy > 1 {
+                        foodSources.append(FoodSource(position: creature.position,
+                                                      energyValue: corpseEnergy,
+                                                      type: .corpse,
+                                                      spawnedAt: tickCount))
+                        corpseCount += 1
+                    }
                 }
             }
         }
