@@ -149,9 +149,12 @@ final class World {
                             .filter { $0 !== creature }
 
         // Nächste Kreatur im Sichtkegel (visuell)
-        var angleToCreature:  Float = 0
-        var distToCreature:   Float = 1
-        var approachVelocity: Float = 0
+        var angleToCreature:   Float = 0
+        var distToCreature:    Float = 1
+        var approachVelocity:  Float = 0
+        var nearestCreatureRed:   Float = 0.5   // neutral grau wenn keine Kreatur sichtbar
+        var nearestCreatureGreen: Float = 0.5
+        var nearestCreatureBlue:  Float = 0.5
         let creaturesInFOV = nearbyAll
             .filter { distance($0.position, creature.position) < creature.sightRadius && inFOV(at: $0.position) }
         if let other = creaturesInFOV.min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
@@ -167,7 +170,11 @@ final class World {
                 let approach = (vx * (-dx) + vy * (-dy)) / dist
                 approachVelocity = max(-1, min(1, approach / max(other.maxSpeed, 0.1)))
             }
+            nearestCreatureRed   = other.dna.red
+            nearestCreatureGreen = other.dna.green
+            nearestCreatureBlue  = other.dna.blue
         }
+        let visibleCreatureCount = min(Float(creaturesInFOV.count), 10) / 10
 
         // Dichte + Herding: omnidirektional — Druckwellen/Vibrationen, kein Sichtkegel nötig
         let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
@@ -182,15 +189,19 @@ final class World {
         }
 
         return SensorInput(
-            angleToFood:        angleToFood,
-            distanceToFood:     distToFood,
-            angleToCreature:    angleToCreature,
-            distanceToCreature: distToCreature,
-            ownEnergy:          creature.energy / creature.maxEnergy,
-            localDensity:       localDensity,
-            approachVelocity:   approachVelocity,
-            nearestFoodType:    nearestFoodType,
-            avgNearbyHeading:   avgNearbyHeading
+            angleToFood:          angleToFood,
+            distanceToFood:       distToFood,
+            angleToCreature:      angleToCreature,
+            distanceToCreature:   distToCreature,
+            ownEnergy:            creature.energy / creature.maxEnergy,
+            localDensity:         localDensity,
+            approachVelocity:     approachVelocity,
+            nearestFoodType:      nearestFoodType,
+            avgNearbyHeading:     avgNearbyHeading,
+            nearestCreatureRed:   nearestCreatureRed,
+            nearestCreatureGreen: nearestCreatureGreen,
+            nearestCreatureBlue:  nearestCreatureBlue,
+            visibleCreatureCount: visibleCreatureCount
         )
     }
 

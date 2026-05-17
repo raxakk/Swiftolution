@@ -66,15 +66,19 @@ struct SwiftolutionTests {
             let dna = DNA.random()
             let nn = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: 8)
             let input = SensorInput(
-                angleToFood:        Float.random(in: -1...1),
-                distanceToFood:     Float.random(in: 0...1),
-                angleToCreature:    Float.random(in: -1...1),
-                distanceToCreature: Float.random(in: 0...1),
-                ownEnergy:          Float.random(in: 0...1),
-                localDensity:       Float.random(in: 0...1),
-                approachVelocity:   Float.random(in: -1...1),
-                nearestFoodType:    Float.random(in: 0...1),
-                avgNearbyHeading:   Float.random(in: -1...1)
+                angleToFood:          Float.random(in: -1...1),
+                distanceToFood:       Float.random(in: 0...1),
+                angleToCreature:      Float.random(in: -1...1),
+                distanceToCreature:   Float.random(in: 0...1),
+                ownEnergy:            Float.random(in: 0...1),
+                localDensity:         Float.random(in: 0...1),
+                approachVelocity:     Float.random(in: -1...1),
+                nearestFoodType:      Float.random(in: 0...1),
+                avgNearbyHeading:     Float.random(in: -1...1),
+                nearestCreatureRed:   Float.random(in: 0...1),
+                nearestCreatureGreen: Float.random(in: 0...1),
+                nearestCreatureBlue:  Float.random(in: 0...1),
+                visibleCreatureCount: Float.random(in: 0...1)
             )
             let out = nn.activate(inputs: input)
             #expect((0...1).contains(out.turnAngle))

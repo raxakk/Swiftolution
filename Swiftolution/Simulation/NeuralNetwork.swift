@@ -4,7 +4,7 @@ struct NeuralNetwork {
 
     // MARK: - Architektur
 
-    static let inputCount    = 9
+    static let inputCount    = 13
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
     static let outputCount   = 5   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEat
@@ -123,11 +123,18 @@ struct SensorInput {
     var approachVelocity:          Float   // >0 = Kreatur nähert sich, <0 = flieht, normiert [-1, +1]
     var nearestFoodType:           Float   // 0 = Pflanze, 1 = Leiche
     var avgNearbyHeading:          Float   // Ø Bewegungsrichtung der Nachbarn relativ zur eigenen [-1, +1]
+    // Farbe der nächsten sichtbaren Kreatur (DNA-Gene [0,1]; 0.5/0.5/0.5 wenn keine sichtbar)
+    var nearestCreatureRed:        Float
+    var nearestCreatureGreen:      Float
+    var nearestCreatureBlue:       Float
+    var visibleCreatureCount:      Float   // normiert [0,1]: min(Anzahl, 10) / 10
 
     func toArray() -> [Float] {
         [angleToFood, distanceToFood, angleToCreature, distanceToCreature,
          ownEnergy, localDensity, approachVelocity,
-         nearestFoodType, avgNearbyHeading]
+         nearestFoodType, avgNearbyHeading,
+         nearestCreatureRed, nearestCreatureGreen, nearestCreatureBlue,
+         visibleCreatureCount]
     }
 }
 
