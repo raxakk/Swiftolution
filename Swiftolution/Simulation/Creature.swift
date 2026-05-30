@@ -24,6 +24,11 @@ final class Creature {
     var age: Int = 0
     var isAlive: Bool { energy > 0 }
 
+    // Interozeption: gleitender Durchschnitt der pro Tick gewonnenen Energie (EMA, α=0.05).
+    // Hohe Rate → Zone gut, niedrige Rate → Zone karg oder falsche Diät.
+    var recentFeedingRate: Float = 0
+    private var energyGainedThisTick: Float = 0
+
     // Seneszenz: steigt ab 70% der genetischen Lebensspanne, läuft unkontrolliert weiter.
     // Bei maxAge = 1.0 → +50% Energiekosten, -30% Speed. Danach weiter steigend → Tod durch Energiemangel.
     var senescence: Float {
@@ -45,7 +50,9 @@ final class Creature {
         let minAngle: CGFloat = 2 * .pi / 3   // 120° Minimum
         return CGFloat(dna.sightAngle) * (2 * .pi - minAngle) + minAngle
     }
-    var attackRadius: CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
+    var attackRadius:        CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
+    // Geruchsradius: omnidirektional, unabhängig vom Sichtkegel
+    var olfactionSmellRadius: CGFloat { CGFloat(dna.olfaction * 170 + 30) }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
     var hiddenCount:  Int     {
         NeuralNetwork.minHiddenCount +
@@ -77,6 +84,8 @@ final class Creature {
     func tick() {
         age += 1
         lastAttacker = nil
+        recentFeedingRate = recentFeedingRate * 0.95 + energyGainedThisTick * 0.05
+        energyGainedThisTick = 0
         consumeEnergy()
     }
 
@@ -112,7 +121,9 @@ final class Creature {
             // Zu fremdartige Nahrung: Verdauungsversuch kostet Energie (Übelkeit, Enzymverschwendung)
             energy = max(0, energy - 5)
         } else {
-            energy = min(energy + food.energyValue * d, maxEnergy)
+            let gain = food.energyValue * d
+            energy = min(energy + gain, maxEnergy)
+            energyGainedThisTick += gain
         }
     }
 
@@ -128,11 +139,12 @@ final class Creature {
         let br = dna.brainSize;  let brainCost:      Float = br * br * 0.04
         let sr = dna.sightRadius; let sa = dna.sightAngle
         let sightCost:      Float = sr * sr * 0.024 + sa * sa * 0.030
+        let ol = dna.olfaction;  let olfactionCost: Float = ol * ol * 0.020
         // Dynamische Kosten bleiben linear — abhängig vom tatsächlichen Verhalten, nicht nur vom Gen.
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
         let actualTurn      = abs((lastAction?.turnAngle ?? 0.5) - 0.5) * 2   // [0,1]
         let turnCost:       Float = actualTurn * maxTurnRate * 0.08
-        let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + turnCost
+        let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + olfactionCost + turnCost
         energy -= baseCosts * (1 + senescence * 0.5)
 
         // Gut ernährt (>60%): Körpermasse aufbauen. Verhungernd (<20%): Muskelkatabolismus.

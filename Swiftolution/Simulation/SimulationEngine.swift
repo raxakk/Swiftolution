@@ -95,8 +95,9 @@ final class SimulationEngine: ObservableObject {
         world.seasonEnabled    = config.seasonEnabled
         world.seasonLength     = config.seasonLength
         world.seasonAmplitude  = config.seasonAmplitude
-        world.minSpawnEnabled   = config.minSpawnEnabled
-        world.minSpawnThreshold = config.minSpawnThreshold
+        world.minSpawnEnabled        = config.minSpawnEnabled
+        world.minSpawnThreshold      = config.minSpawnThreshold
+        world.latitudeGradientEnabled = config.latitudeGradientEnabled
     }
 
     // MARK: - Loop
@@ -162,8 +163,9 @@ struct SimulationConfig {
     var foodGrowthRate:   Double = 0.05
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
-    var minSpawnEnabled:   Bool  = false
-    var minSpawnThreshold: Int   = 5
+    var minSpawnEnabled:         Bool  = false
+    var minSpawnThreshold:       Int   = 5
+    var latitudeGradientEnabled: Bool  = false
 
     // Jahreszeiten (sofort wirksam)
     var seasonEnabled:   Bool  = false
@@ -201,6 +203,7 @@ struct CreatureSnapshot {
     let litterSize:       Int
     let brainSize:        Float
     let hiddenCount:      Int
+    let olfaction:        Float   // Geruchssinn-Gen [0,1]
     // Aktuelles NN-Verhalten
     let actionSpeed:      Float
     let actionReproduce:  Float
@@ -229,6 +232,7 @@ struct CreatureSnapshot {
         litterSize    = c.dna.litterSize
         brainSize     = c.dna.brainSize
         hiddenCount   = c.hiddenCount
+        olfaction     = c.dna.olfaction
         actionSpeed     = c.lastAction?.speed             ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
         actionAttack    = c.lastAction?.wantsToAttack    ?? 0

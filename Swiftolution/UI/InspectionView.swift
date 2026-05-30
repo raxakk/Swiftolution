@@ -55,6 +55,8 @@ struct InspectionView: View {
                      displayOverride: "\(snapshot.litterSize)")
             TraitBar(label: "Gehirn",            value: snapshot.brainSize,     color: .indigo,
                      displayOverride: "\(snapshot.hiddenCount) Neuronen")
+            TraitBar(label: "Olfaktion",          value: snapshot.olfaction,     color: .green,
+                     displayOverride: String(format: "%.0f px", snapshot.olfaction * 170 + 30))
 
             Divider()
 

@@ -23,8 +23,10 @@ struct DNA {
     var sightAngle:            Float { genes[11] }
     // Drehgeschwindigkeit: gene=0 → 0.05 rad/Tick (träge), gene=1 → 0.40 rad/Tick (wendig)
     var turnRate:              Float { genes[12] }
+    // Geruchssinn: gene=0 → 30 px (kaum), gene=1 → 200 px (weite omnidirektionale Wahrnehmung)
+    var olfaction:             Float { genes[13] }
 
-    static let neuralWeightsStartIndex = 13
+    static let neuralWeightsStartIndex = 14
 
     static func totalLength(networkWeightCount: Int) -> Int {
         neuralWeightsStartIndex + networkWeightCount

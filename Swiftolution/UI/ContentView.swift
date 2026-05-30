@@ -183,6 +183,13 @@ struct SidebarView: View {
                             range: 1...30
                         )
                     }
+
+                    Toggle("Äquator-Gradient", isOn: Binding(
+                        get: { engine.config.latitudeGradientEnabled },
+                        set: { engine.config.latitudeGradientEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
                 }
 
                 // MARK: Evolution (sofort wirksam)

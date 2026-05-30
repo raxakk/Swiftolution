@@ -22,6 +22,7 @@ final class World {
     var maxPopulation:    Int    = 300
     var minSpawnEnabled:   Bool = false
     var minSpawnThreshold: Int  = 5
+    var latitudeGradientEnabled: Bool = false
 
     // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
     var seasonEnabled:   Bool  = false
@@ -66,7 +67,7 @@ final class World {
             creatures.append(Creature(dna: dna, position: randomPosition()))
         }
         for _ in 0..<foodCount {
-            foodSources.append(FoodSource(position: randomPosition()))
+            foodSources.append(FoodSource(position: spawnPosition()))
         }
         plantCount  = foodCount
         corpseCount = 0
@@ -90,7 +91,8 @@ final class World {
     // MARK: - Bewegung & Wahrnehmung
 
     private func moveCreatures() {
-        let count = creatures.count
+        let snapshot = creatures
+        let count = snapshot.count
         guard count > 0 else { return }
 
         // Phase 1 — Parallel: Wahrnehmung + NN-Aktivierung.
@@ -98,14 +100,14 @@ final class World {
         // withUnsafeMutableBufferPointer fixiert den Array-Puffer → COW-freier Schreibzugriff aus n Threads.
         var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1]), count: count)
         outputs.withUnsafeMutableBufferPointer { buf in
-            DispatchQueue.concurrentPerform(iterations: count) { [self] i in
-                let input = sense(for: creatures[i])
-                buf[i] = creatures[i].brain.activate(inputs: input)
+            DispatchQueue.concurrentPerform(iterations: count) { i in
+                let input = sense(for: snapshot[i])
+                buf[i] = snapshot[i].brain.activate(inputs: input)
             }
         }
 
         // Phase 2 — Sequential: Position und Zustand schreiben (Positionsänderungen beeinflussen den Tick).
-        for (i, creature) in creatures.enumerated() {
+        for (i, creature) in snapshot.enumerated() {
             creature.apply(output: outputs[i], in: self)
             creature.tick()
         }
@@ -177,6 +179,13 @@ final class World {
         let visibleCreatureCount = min(Float(creaturesInFOV.count), 10) / 10
         let visibleFoodCount     = min(Float(foodInFOV.count), 10) / 10
 
+        // Omnidirektionaler Pflanzen-Geruch — kein FOV, skaliert mit olfaction-Gen
+        let smellR = creature.olfactionSmellRadius
+        let plantsSmelled = grid.nearbyFood(to: creature.position, within: smellR)
+            .filter { $0.type == .plant && distance($0.position, creature.position) < smellR }
+            .count
+        let localPlantDensity = min(Float(plantsSmelled) / 20.0, 1.0)
+
         // Dichte + Herding: omnidirektional — Druckwellen/Vibrationen, kein Sichtkegel nötig
         let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
         let localDensity = min(Float(densityCount) / 8.0, 1.0)
@@ -204,7 +213,9 @@ final class World {
             nearestCreatureBlue:  nearestCreatureBlue,
             visibleCreatureCount: visibleCreatureCount,
             ownSenescence:        min(creature.senescence, 1),
-            visibleFoodCount:     visibleFoodCount
+            visibleFoodCount:     visibleFoodCount,
+            localPlantDensity:    localPlantDensity,
+            recentFeedingRate:    min(creature.recentFeedingRate / 20.0, 1.0)
         )
     }
 
@@ -386,11 +397,62 @@ final class World {
     // MARK: - Nahrungswachstum
 
     func growFood() {
-        let fillRatio = Double(plantCount) / Double(maxFood)
-        let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
-        for _ in 0..<max(0, newItems) {
-            foodSources.append(FoodSource(position: randomPosition()))
-            plantCount += 1
+        if latitudeGradientEnabled {
+            growFoodWithGradient()
+        } else {
+            let fillRatio = Double(plantCount) / Double(maxFood)
+            let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
+            for _ in 0..<max(0, newItems) {
+                foodSources.append(FoodSource(position: randomPosition()))
+                plantCount += 1
+            }
+        }
+    }
+
+    // Streifen-basiertes Wachstum: Kapazität und Rate skalieren mit cos(Polabstand × π/2).
+    // Äquatorstreifen wachsen schnell und können viele Pflanzen tragen;
+    // Polstreifen sind karg und regenerieren langsam.
+    // Gesamtkapazität = maxFood (Energieerhaltung über alle Streifen).
+    private func growFoodWithGradient() {
+        let strips     = 10
+        let stripH     = size.height / CGFloat(strips)
+        let equatorY   = Float(size.height / 2)
+        let halfH      = Float(size.height / 2)
+
+        // Fruchtbarkeit und Gesamtnormierung pro Streifen
+        var fertilities    = [Double](repeating: 0, count: strips)
+        var totalFertility = 0.0
+        for i in 0..<strips {
+            let centerY = Float((CGFloat(i) + 0.5) * stripH)
+            let dy      = abs(centerY - equatorY) / halfH
+            let f       = Double(cos(Double(dy) * .pi / 2))
+            fertilities[i]  = f
+            totalFertility += f
+        }
+
+        // Pflanzen pro Streifen zählen (einmalig, O(n_plants))
+        var counts = [Int](repeating: 0, count: strips)
+        for food in foodSources where food.type == .plant {
+            counts[min(Int(food.position.y / stripH), strips - 1)] += 1
+        }
+
+        // Logistisches Wachstum pro Streifen
+        for i in 0..<strips {
+            let f        = fertilities[i]
+            // Streifen-Kapazität proportional zur Fruchtbarkeit; Summe = maxFood
+            let capacity = Double(maxFood) * f / totalFertility
+            let fill     = capacity > 0 ? min(1.0, Double(counts[i]) / capacity) : 1.0
+            // f² : Fruchtbarkeit steuert sowohl Kapazität als auch Rate → starker Äquatorvorteil
+            let newItems = Int((f * foodGrowthRate * currentSeasonFactor * (1.0 - fill) * capacity).rounded())
+
+            let minY = CGFloat(i) * stripH
+            let maxY = minY + stripH
+            for _ in 0..<max(0, newItems) {
+                let pos = CGPoint(x: CGFloat.random(in: 0..<size.width),
+                                  y: CGFloat.random(in: minY..<maxY))
+                foodSources.append(FoodSource(position: pos))
+                plantCount += 1
+            }
         }
     }
 
@@ -412,6 +474,20 @@ final class World {
             x: CGFloat.random(in: 0..<size.width),
             y: CGFloat.random(in: 0..<size.height)
         )
+    }
+
+    // Pflanzen-Spawn: mit Äquator-Gradient konzentrieren Pflanzen sich in Weltmitte (y-Achse).
+    // Rejection-Sampling: Akzeptanzwahrscheinlichkeit = cos(normierter Polabstand × π/2).
+    // Äquator (dy=0) → 100%, Pol (dy=1) → 0%. Mittlere Iterationen: ~1.6.
+    private func spawnPosition() -> CGPoint {
+        guard latitudeGradientEnabled else { return randomPosition() }
+        let equatorY = Float(size.height / 2)
+        let halfH    = Float(size.height / 2)
+        while true {
+            let pos = randomPosition()
+            let dy  = abs(Float(pos.y) - equatorY) / halfH
+            if Float.random(in: 0...1) < cos(dy * .pi / 2) { return pos }
+        }
     }
 
     // Nachwuchs spawnt in einem zufälligen Radius um das Elterntier,
