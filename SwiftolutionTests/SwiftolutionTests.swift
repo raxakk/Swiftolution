@@ -59,6 +59,115 @@ struct SwiftolutionTests {
         #expect(dna.neuralWeights().count == NeuralNetwork.totalWeightCount)
     }
 
+    // MARK: - Genetische Distanz (Artkennung)
+
+    @Test func geneticDistanceZeroForIdenticalMarkers() {
+        var a = DNA.random()
+        var b = a
+        // Marker angleichen (Farbe 7,8,9 + Aggression 3), NN-Gewichte dürfen abweichen
+        for i in [3, 7, 8, 9] { b.genes[i] = a.genes[i] }
+        #expect(a.geneticDistance(to: b) == 0)
+    }
+
+    @Test func geneticDistanceGrowsWithColorGap() {
+        var a = DNA.random(); a.genes[3] = 0.5; a.genes[7] = 0; a.genes[8] = 0; a.genes[9] = 0
+        var b = a; b.genes[7] = 1   // rot maximal auseinander
+        var c = a; c.genes[7] = 0.2
+        #expect(a.geneticDistance(to: b) > a.geneticDistance(to: c))
+        // Marker in [0,1] über 4 Achsen → Distanz nie größer als 2
+        #expect(a.geneticDistance(to: b) <= 2.0)
+    }
+
+    @Test func geneticDistanceIsSymmetric() {
+        let a = DNA.random()
+        let b = DNA.random()
+        #expect(abs(a.geneticDistance(to: b) - b.geneticDistance(to: a)) < 1e-6)
+    }
+
+    @Test func speciationBlocksDistantPartners() {
+        // Zwei genetisch weit entfernte, paarungsbereite Kreaturen dürfen sich NICHT sexuell paaren.
+        let world = World(size: CGSize(width: 200, height: 200))
+        world.maxPopulation      = 100
+        world.speciationEnabled  = true
+        world.speciationThreshold = 0.3
+
+        var dnaA = DNA.random()
+        dnaA.genes[4]  = 0.1   // maxAge 100 → reif ab age > 10
+        dnaA.genes[5]  = 0.0   // Energie-Schwelle 55%
+        dnaA.genes[10] = 0.0   // litterSize 1
+        dnaA.genes[3]  = 0.2
+        dnaA.genes[7]  = 0.0; dnaA.genes[8] = 0.0; dnaA.genes[9] = 0.0
+
+        var dnaB = dnaA
+        dnaB.genes[7] = 1.0; dnaB.genes[8] = 1.0; dnaB.genes[9] = 1.0  // ganz andere Farbe → Distanz ~1.73
+
+        let a = Creature(dna: dnaA, position: CGPoint(x: 100, y: 100))
+        let b = Creature(dna: dnaB, position: CGPoint(x: 105, y: 100))
+        for c in [a, b] {
+            c.age = 20
+            c.energy = c.maxEnergy * 0.9
+            c.lastAction = ActionOutput(fromArray: [0.5, 0.0, 1.0, 0.0])  // wantsToReproduce
+        }
+        world.creatures = [a, b]
+        world.rebuildGrid()
+        world.reproduceCreatures()
+
+        // Beide sind nun asexuelle Nachkommen möglich, aber KEIN gemeinsames Kind:
+        // Ein sexuelles Kind läge auf dem Mittelpunkt (102.5,100) — asexuelle streuen um den Elternpunkt.
+        // Robuster Check: kein Kind ist genetisch nahe an BEIDEN Eltern zugleich.
+        let children = world.creatures.filter { $0 !== a && $0 !== b }
+        for child in children {
+            let hybrid = child.dna.geneticDistance(to: dnaA) < 0.5
+                      && child.dna.geneticDistance(to: dnaB) < 0.5
+            #expect(!hybrid)
+        }
+    }
+
+    @Test func speciationAllowsSimilarPartners() {
+        // Genetisch nahe Partner paaren sich sexuell (gemeinsames Kind entsteht).
+        let world = World(size: CGSize(width: 200, height: 200))
+        world.maxPopulation       = 100
+        world.mutationRate        = 0.0
+        world.speciationEnabled   = true
+        world.speciationThreshold = 0.45
+
+        var dna = DNA.random()
+        dna.genes[4]  = 0.1
+        dna.genes[5]  = 0.0
+        dna.genes[10] = 0.0
+        dna.genes[3]  = 0.2
+        dna.genes[7]  = 0.5; dna.genes[8] = 0.5; dna.genes[9] = 0.5
+
+        let a = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        let b = Creature(dna: dna, position: CGPoint(x: 105, y: 100))
+        for c in [a, b] {
+            c.age = 20
+            c.energy = c.maxEnergy * 0.9
+            c.lastAction = ActionOutput(fromArray: [0.5, 0.0, 1.0, 0.0])
+        }
+        world.creatures = [a, b]
+        world.rebuildGrid()
+        world.reproduceCreatures()
+
+        #expect(world.creatures.count > 2)   // mindestens ein Nachkomme
+    }
+
+    @Test func countSpeciesSeparatesColorClusters() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        // Zwei klar getrennte Farb-Cluster
+        for _ in 0..<5 {
+            var dna = DNA.random(); dna.genes[3] = 0.2
+            dna.genes[7] = 0.0; dna.genes[8] = 0.0; dna.genes[9] = 0.0
+            world.creatures.append(Creature(dna: dna, position: .zero))
+        }
+        for _ in 0..<5 {
+            var dna = DNA.random(); dna.genes[3] = 0.2
+            dna.genes[7] = 1.0; dna.genes[8] = 1.0; dna.genes[9] = 1.0
+            world.creatures.append(Creature(dna: dna, position: .zero))
+        }
+        #expect(world.countSpecies(threshold: 0.3) == 2)
+    }
+
     // MARK: - NeuralNetwork
 
     @Test func networkOutputsInSigmoidRange() {

@@ -98,6 +98,8 @@ final class SimulationEngine: ObservableObject {
         world.minSpawnEnabled        = config.minSpawnEnabled
         world.minSpawnThreshold      = config.minSpawnThreshold
         world.latitudeGradientEnabled = config.latitudeGradientEnabled
+        world.speciationEnabled      = config.speciationEnabled
+        world.speciationThreshold    = config.speciationThreshold
     }
 
     // MARK: - Loop
@@ -168,6 +170,7 @@ final class SimulationEngine: ObservableObject {
         s.averageEnergy = n > 0 ? energySum / n : 0
         s.currentSeason = world.currentSeasonName
         s.seasonFactor  = world.currentSeasonFactor
+        s.speciesCount  = world.speciationEnabled ? world.countSpecies(threshold: world.speciationThreshold) : 0
         stats = s
         refreshInspection()
     }
@@ -184,6 +187,10 @@ struct SimulationConfig {
     var minSpawnEnabled:         Bool  = false
     var minSpawnThreshold:       Int   = 5
     var latitudeGradientEnabled: Bool  = false
+
+    // Assortative Paarung / Artbildung
+    var speciationEnabled:   Bool  = true
+    var speciationThreshold: Float = 0.45
 
     // Jahreszeiten (sofort wirksam)
     var seasonEnabled:   Bool  = false
@@ -279,4 +286,5 @@ struct SimulationStats {
     var averageEnergy: Double = 0
     var currentSeason: String = "–"
     var seasonFactor:  Double = 1.0
+    var speciesCount:  Int    = 0   // distinkte Arten (0 = Speziation aus)
 }

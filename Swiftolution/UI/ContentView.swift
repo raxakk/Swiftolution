@@ -77,6 +77,11 @@ struct SidebarView: View {
                             color: .red)
                     StatRow(label: "Ø Aggression",  value: String(format: "%.2f", engine.stats.avgAggression))
 
+                    if engine.config.speciationEnabled {
+                        StatRow(label: "Arten",     value: "\(engine.stats.speciesCount)",
+                                color: .cyan)
+                    }
+
                     StatRow(label: "Geburten",      value: "\(engine.stats.totalBirths)")
                     StatRow(label: "Tode",          value: "\(engine.stats.totalDeaths)")
 
@@ -213,6 +218,25 @@ struct SidebarView: View {
                         ),
                         range: 0.01...0.50
                     )
+
+                    Toggle("Artbildung", isOn: Binding(
+                        get: { engine.config.speciationEnabled },
+                        set: { engine.config.speciationEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
+
+                    if engine.config.speciationEnabled {
+                        ParamSlider(
+                            label: "Paarungsschwelle",
+                            displayValue: String(format: "%.2f", engine.config.speciationThreshold),
+                            value: Binding(
+                                get: { Double(engine.config.speciationThreshold) },
+                                set: { engine.config.speciationThreshold = Float($0) }
+                            ),
+                            range: 0.10...1.00
+                        )
+                    }
                 }
 
                 // MARK: Startbedingungen (gilt beim Neustart)

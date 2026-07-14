@@ -76,4 +76,19 @@ struct DNA {
     func neuralWeights() -> [Float] {
         Array(genes[DNA.neuralWeightsStartIndex...])
     }
+
+    // MARK: - Genetische Distanz (Artkennung)
+
+    // "Species-Signatur" für assortative Paarung: Farbe (sichtbar + als Sensor wahrgenommen)
+    // dominiert, Aggression steuert die ökologische Nische mit bei. Bewusst NICHT das ganze
+    // Genom — bei ~200 NN-Gewichten wären alle Paare gleich weit entfernt (Fluch der Dimension),
+    // und Farbe ist das Signal, das man auf dem Bildschirm als Cluster sehen kann.
+    // Euklidische Distanz über 4 Marker in [0,1] → Wertebereich [0, 2].
+    func geneticDistance(to other: DNA) -> Float {
+        let dr = red        - other.red
+        let dg = green      - other.green
+        let db = blue       - other.blue
+        let da = aggression - other.aggression
+        return (dr * dr + dg * dg + db * db + da * da).squareRoot()
+    }
 }

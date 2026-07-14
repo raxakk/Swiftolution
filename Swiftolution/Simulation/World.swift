@@ -24,6 +24,14 @@ final class World {
     var minSpawnThreshold: Int  = 5
     var latitudeGradientEnabled: Bool = false
 
+    // Assortative Paarung: Kreaturen paaren sich nur mit genetisch ähnlichen Partnern.
+    // Treibt reproduktive Isolation → sichtbare Artbildung statt eines verschwommenen Genpools.
+    // Verträgt sich mit einer selbsttragenden Population (Verhaltenstest: hält die Kapazität
+    // auch bei stufenweiser Nahrungsreduktion). Niedrigere Schwelle → mehr, engere Arten,
+    // aber kleinerer Partnerpool; in einer knappen Population entsprechend vorsichtig senken.
+    var speciationEnabled:   Bool  = true
+    var speciationThreshold: Float = 0.45   // max. genetische Distanz für Paarung (Bereich der Distanz: [0, 2])
+
     // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
     var seasonEnabled:   Bool  = false
     var seasonLength:    Int   = 3000    // Ticks pro Jahr
@@ -386,14 +394,18 @@ final class World {
             guard creatures.count + newborns.count < maxPopulation else { break }
 
             // Grid-Abfrage statt O(candidates.count)-Scan: Partner wird räumlich gesucht.
+            // Paarungsschranke: bei aktiver Speziation genetische Distanz, sonst nur Aggressions-Nische.
             var partner: Creature? = nil
             grid.forEachCreature(near: parent.position, within: 40) { other in
                 guard partner == nil,
                       other !== parent,
                       !mated.contains(ObjectIdentifier(other)),
                       (other.lastAction?.wantsToReproduce ?? 0) > 0.5,
-                      other.canReproduce,
-                      abs(other.dna.aggression - parent.dna.aggression) < 0.3 else { return }
+                      other.canReproduce else { return }
+                let compatible = speciationEnabled
+                    ? parent.dna.geneticDistance(to: other.dna) <= speciationThreshold
+                    : abs(other.dna.aggression - parent.dna.aggression) < 0.3
+                guard compatible else { return }
                 partner = other
             }
 
@@ -547,6 +559,23 @@ final class World {
             x: (origin.x + cos(angle) * dist + size.width).truncatingRemainder(dividingBy: size.width),
             y: (origin.y + sin(angle) * dist + size.height).truncatingRemainder(dividingBy: size.height)
         )
+    }
+
+    // Zählt distinkte Arten per Greedy-Clustering auf den Markergenen: jede Kreatur kommt
+    // zum ersten Cluster, dessen Repräsentant näher als threshold liegt, sonst eröffnet sie
+    // einen neuen. Näherung (Reihenfolge-abhängig), aber O(n·k) mit kleinem k und für die
+    // Diversitäts-Anzeige völlig ausreichend.
+    func countSpecies(threshold: Float) -> Int {
+        var representatives: [DNA] = []
+        for creature in creatures {
+            var matched = false
+            for rep in representatives where creature.dna.geneticDistance(to: rep) <= threshold {
+                matched = true
+                break
+            }
+            if !matched { representatives.append(creature.dna) }
+        }
+        return representatives.count
     }
 
     func nearestCreature(to creature: Creature, within radius: CGFloat) -> Creature? {
