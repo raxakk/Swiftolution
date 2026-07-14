@@ -13,6 +13,10 @@ final class Creature {
 
     var position: CGPoint
     var heading: Float = Float.random(in: 0..<(2 * .pi))
+    // cos/sin des Headings gecacht — jede Kreatur ist Nachbar vieler anderer,
+    // die Herding-/Approach-Sensoren lesen diese Werte n-fach pro Tick.
+    private(set) var headingCos: Float = 0
+    private(set) var headingSin: Float = 0
 
     // MARK: - Zustand
 
@@ -77,6 +81,8 @@ final class Creature {
         let hc = NeuralNetwork.minHiddenCount +
             Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
         self.brain    = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: hc)
+        self.headingCos = cos(heading)
+        self.headingSin = sin(heading)
     }
 
     // MARK: - Tick
@@ -93,11 +99,13 @@ final class Creature {
         lastAction = output
 
         heading += (output.turnAngle - 0.5) * 2 * maxTurnRate
+        headingCos = cos(heading)
+        headingSin = sin(heading)
 
         let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3)
         let speed = output.speed * effectiveMaxSpeed
-        position.x += CGFloat(cos(heading) * speed)
-        position.y += CGFloat(sin(heading) * speed)
+        position.x += CGFloat(headingCos * speed)
+        position.y += CGFloat(headingSin * speed)
 
         // Toroidal wrap-around (Welt-Kanten verbinden sich)
         position.x = (position.x + world.size.width).truncatingRemainder(dividingBy: world.size.width)

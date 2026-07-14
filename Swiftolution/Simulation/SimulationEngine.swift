@@ -131,26 +131,44 @@ final class SimulationEngine: ObservableObject {
     }
 
     private func updateStats() {
-        let creatures       = world.creatures
-        let n               = Double(creatures.count)
-        stats.tickCount     = world.tickCount
-        stats.generation    = world.generation
-        stats.population    = creatures.count
-        stats.herbivores    = creatures.filter { $0.dna.aggression <= 0.33 }.count
-        stats.omnivores     = creatures.filter { $0.dna.aggression > 0.33 && $0.dna.aggression <= 0.67 }.count
-        stats.carnivores    = creatures.filter { $0.dna.aggression > 0.67 }.count
-        stats.avgAggression = n > 0 ? creatures.map { Double($0.dna.aggression) }.reduce(0,+) / n : 0
-        stats.totalBirths   = world.totalBirths
-        stats.totalDeaths   = world.totalDeaths
-        stats.plantCount    = world.plantCount
-        stats.maxFood       = world.maxFood
-        stats.corpseCount   = world.corpseCount
-        stats.oldestAge     = creatures.map { $0.age }.max() ?? 0
-        stats.averageAge    = n > 0 ? creatures.map { Double($0.age) }.reduce(0,+) / n : 0
-        let energies        = creatures.map { Double($0.energy / $0.maxEnergy) }
-        stats.averageEnergy = energies.isEmpty ? 0 : energies.reduce(0, +) / Double(energies.count)
-        stats.currentSeason = world.currentSeasonName
-        stats.seasonFactor  = world.currentSeasonFactor
+        let creatures = world.creatures
+        let n         = Double(creatures.count)
+
+        // Ein Pass über alle Kreaturen statt 8 filter/map-Durchläufe
+        var herbivores = 0, omnivores = 0, carnivores = 0
+        var aggressionSum = 0.0, ageSum = 0.0, energySum = 0.0
+        var oldestAge = 0
+        for c in creatures {
+            let aggression = c.dna.aggression
+            if aggression <= 0.33      { herbivores += 1 }
+            else if aggression <= 0.67 { omnivores  += 1 }
+            else                       { carnivores += 1 }
+            aggressionSum += Double(aggression)
+            ageSum        += Double(c.age)
+            energySum     += Double(c.energy / c.maxEnergy)
+            if c.age > oldestAge { oldestAge = c.age }
+        }
+
+        // Lokal aufbauen, einmal zuweisen — @Published feuert so nur 1× pro Frame
+        var s = SimulationStats()
+        s.tickCount     = world.tickCount
+        s.generation    = world.generation
+        s.population    = creatures.count
+        s.herbivores    = herbivores
+        s.omnivores     = omnivores
+        s.carnivores    = carnivores
+        s.avgAggression = n > 0 ? aggressionSum / n : 0
+        s.totalBirths   = world.totalBirths
+        s.totalDeaths   = world.totalDeaths
+        s.plantCount    = world.plantCount
+        s.maxFood       = world.maxFood
+        s.corpseCount   = world.corpseCount
+        s.oldestAge     = oldestAge
+        s.averageAge    = n > 0 ? ageSum / n : 0
+        s.averageEnergy = n > 0 ? energySum / n : 0
+        s.currentSeason = world.currentSeasonName
+        s.seasonFactor  = world.currentSeasonFactor
+        stats = s
         refreshInspection()
     }
 }

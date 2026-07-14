@@ -116,86 +116,127 @@ final class World {
     // Baut den Sensor-Input für ein Lebewesen auf.
     // Nahrung und nächste Kreatur werden nur im Sichtkegel wahrgenommen (FOV).
     // Dichte und Herding-Richtung sind omnidirektional (Tastsinn / Druckwellen).
+    // Läuft parallel aus n Threads: nur eigene lokale Variablen + read-only Grid,
+    // keine Allokationen (Visitor-API), Distanzvergleiche quadriert (sqrt nur am Ende).
     private func sense(for creature: Creature) -> SensorInput {
-        let sightR    = Float(creature.sightRadius)
-        let halfAngle = creature.sightAngle / 2
-        let isFull    = creature.sightAngle >= 2 * .pi * 0.995
+        let px = Float(creature.position.x)
+        let py = Float(creature.position.y)
+        let sightRadius = creature.sightRadius   // computed property — einmal auswerten
+        let sightR   = Float(sightRadius)
+        let sightRSq = sightR * sightR
+        let isFull   = creature.sightAngle >= 2 * .pi * 0.995
 
-        // Prüft ob eine Position im Sichtkegel liegt.
-        func inFOV(at pos: CGPoint) -> Bool {
+        // FOV per Skalarprodukt statt atan2: Winkel(d, heading) ≤ halbAngle
+        //   ⇔ dot/|d| ≥ cos(halbAngle) — auflösbar ohne sqrt über Vorzeichen + Quadrate.
+        let cosHalf   = cos(Float(creature.sightAngle) / 2)
+        let cosHalfSq = cosHalf * cosHalf
+        let hx = creature.headingCos
+        let hy = creature.headingSin
+
+        @inline(__always)
+        func inFOV(_ dx: Float, _ dy: Float, _ distSq: Float) -> Bool {
             guard !isFull else { return true }
-            let dx = Float(pos.x - creature.position.x)
-            let dy = Float(pos.y - creature.position.y)
-            return abs(normalizeAngle(atan2(dy, dx) - creature.heading)) <= Float(halfAngle)
+            let dot = dx * hx + dy * hy
+            if cosHalf >= 0 {
+                return dot >= 0 && dot * dot >= cosHalfSq * distSq
+            } else {
+                return dot >= 0 || dot * dot <= cosHalfSq * distSq
+            }
         }
 
-        // Nahrung im Sichtkegel
+        // Ein Nahrungs-Pass für Sicht UND Geruch (gemeinsamer Query-Radius)
+        let smellR   = Float(creature.olfactionSmellRadius)
+        let smellRSq = smellR * smellR
+        var nearestFoodDx: Float = 0, nearestFoodDy: Float = 0
+        var nearestFoodDistSq   = Float.greatestFiniteMagnitude
+        var nearestFoodIsCorpse = false
+        var foodInFOVCount = 0
+        var plantsSmelled  = 0
+        grid.forEachFood(near: creature.position,
+                         within: max(sightRadius, creature.olfactionSmellRadius)) { food in
+            let dx = Float(food.position.x) - px
+            let dy = Float(food.position.y) - py
+            let distSq = dx * dx + dy * dy
+            if food.type == .plant && distSq < smellRSq { plantsSmelled += 1 }
+            if distSq < sightRSq && inFOV(dx, dy, distSq) {
+                foodInFOVCount += 1
+                if distSq < nearestFoodDistSq {
+                    nearestFoodDistSq   = distSq
+                    nearestFoodDx       = dx
+                    nearestFoodDy       = dy
+                    nearestFoodIsCorpse = food.type == .corpse
+                }
+            }
+        }
+
         var angleToFood:     Float = 0
         var distToFood:      Float = 1
         var nearestFoodType: Float = 0
-        let foodInFOV = grid.nearbyFood(to: creature.position, within: creature.sightRadius)
-            .filter { distance($0.position, creature.position) < creature.sightRadius && inFOV(at: $0.position) }
-        if let food = foodInFOV.min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
-            let dx = Float(food.position.x - creature.position.x)
-            let dy = Float(food.position.y - creature.position.y)
-            let relAngle    = normalizeAngle(atan2(dy, dx) - creature.heading)
-            angleToFood     = relAngle / .pi
-            distToFood      = Float(distance(creature.position, food.position)) / sightR
-            nearestFoodType = food.type == .corpse ? 1.0 : 0.0
+        if nearestFoodDistSq < .greatestFiniteMagnitude {
+            angleToFood     = normalizeAngle(atan2(nearestFoodDy, nearestFoodDx) - creature.heading) / .pi
+            distToFood      = sqrt(nearestFoodDistSq) / sightR
+            nearestFoodType = nearestFoodIsCorpse ? 1.0 : 0.0
         }
 
-        // Eine Grid-Abfrage für alle Kreatur-Sensoren.
-        // Radius = max(sightRadius, 80px) für Dichte/Herding-Sensoren.
-        let crQueryRadius = max(creature.sightRadius, 80)
-        let nearbyAll = grid.nearbyCreatures(to: creature.position, within: crQueryRadius)
-                            .filter { $0 !== creature }
+        // Ein Kreatur-Pass für Sicht, Dichte (<55) und Herding (<80)
+        var nearestDx: Float = 0, nearestDy: Float = 0
+        var nearestDistSq = Float.greatestFiniteMagnitude
+        var nearestOther: Creature? = nil
+        var visibleCount = 0
+        var densityCount = 0
+        var herdSin: Float = 0, herdCos: Float = 0
+        var herdCount = 0
+        grid.forEachCreature(near: creature.position, within: max(sightRadius, 80)) { other in
+            guard other !== creature else { return }
+            let dx = Float(other.position.x) - px
+            let dy = Float(other.position.y) - py
+            let distSq = dx * dx + dy * dy
+            if distSq < 55 * 55 { densityCount += 1 }
+            if distSq < 80 * 80 {
+                herdSin += other.headingSin
+                herdCos += other.headingCos
+                herdCount += 1
+            }
+            if distSq < sightRSq && inFOV(dx, dy, distSq) {
+                visibleCount += 1
+                if distSq < nearestDistSq {
+                    nearestDistSq = distSq
+                    nearestDx     = dx
+                    nearestDy     = dy
+                    nearestOther  = other
+                }
+            }
+        }
 
-        // Nächste Kreatur im Sichtkegel (visuell)
         var angleToCreature:   Float = 0
         var distToCreature:    Float = 1
         var approachVelocity:  Float = 0
         var nearestCreatureRed:   Float = 0.5   // neutral grau wenn keine Kreatur sichtbar
         var nearestCreatureGreen: Float = 0.5
         var nearestCreatureBlue:  Float = 0.5
-        let creaturesInFOV = nearbyAll
-            .filter { distance($0.position, creature.position) < creature.sightRadius && inFOV(at: $0.position) }
-        if let other = creaturesInFOV.min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) }) {
-            let dx   = Float(other.position.x - creature.position.x)
-            let dy   = Float(other.position.y - creature.position.y)
-            let dist = Float(distance(creature.position, other.position))
-            angleToCreature = normalizeAngle(atan2(dy, dx) - creature.heading) / .pi
+        if let other = nearestOther {
+            let dist = sqrt(nearestDistSq)
+            angleToCreature = normalizeAngle(atan2(nearestDy, nearestDx) - creature.heading) / .pi
             distToCreature  = dist / sightR
             let otherSpeed = (other.lastAction?.speed ?? 0) * other.maxSpeed
-            let vx = cos(other.heading) * otherSpeed
-            let vy = sin(other.heading) * otherSpeed
+            let vx = other.headingCos * otherSpeed
+            let vy = other.headingSin * otherSpeed
             if dist > 0 {
-                let approach = (vx * (-dx) + vy * (-dy)) / dist
+                let approach = (vx * (-nearestDx) + vy * (-nearestDy)) / dist
                 approachVelocity = max(-1, min(1, approach / max(other.maxSpeed, 0.1)))
             }
             nearestCreatureRed   = other.dna.red
             nearestCreatureGreen = other.dna.green
             nearestCreatureBlue  = other.dna.blue
         }
-        let visibleCreatureCount = min(Float(creaturesInFOV.count), 10) / 10
-        let visibleFoodCount     = min(Float(foodInFOV.count), 10) / 10
+        let visibleCreatureCount = min(Float(visibleCount), 10) / 10
+        let visibleFoodCount     = min(Float(foodInFOVCount), 10) / 10
+        let localPlantDensity    = min(Float(plantsSmelled) / 20.0, 1.0)
+        let localDensity         = min(Float(densityCount) / 8.0, 1.0)
 
-        // Omnidirektionaler Pflanzen-Geruch — kein FOV, skaliert mit olfaction-Gen
-        let smellR = creature.olfactionSmellRadius
-        let plantsSmelled = grid.nearbyFood(to: creature.position, within: smellR)
-            .filter { $0.type == .plant && distance($0.position, creature.position) < smellR }
-            .count
-        let localPlantDensity = min(Float(plantsSmelled) / 20.0, 1.0)
-
-        // Dichte + Herding: omnidirektional — Druckwellen/Vibrationen, kein Sichtkegel nötig
-        let densityCount = nearbyAll.filter { distance($0.position, creature.position) < 55 }.count
-        let localDensity = min(Float(densityCount) / 8.0, 1.0)
-
-        let neighbors80 = nearbyAll.filter { distance($0.position, creature.position) < 80 }
         var avgNearbyHeading: Float = 0
-        if !neighbors80.isEmpty {
-            let sinMean = neighbors80.reduce(Float(0)) { $0 + sin($1.heading) } / Float(neighbors80.count)
-            let cosMean = neighbors80.reduce(Float(0)) { $0 + cos($1.heading) } / Float(neighbors80.count)
-            avgNearbyHeading = normalizeAngle(atan2(sinMean, cosMean) - creature.heading) / .pi
+        if herdCount > 0 {
+            avgNearbyHeading = normalizeAngle(atan2(herdSin, herdCos) - creature.heading) / .pi
         }
 
         return SensorInput(
@@ -253,20 +294,25 @@ final class World {
 
     func feedCreatures() {
         var eatenIDs = Set<UUID>()
-        var eatenPlants = 0
+        var eatenPlants  = 0
+        var eatenCorpses = 0
         for creature in creatures {
-            for food in grid.nearbyFood(to: creature.position, within: creature.eatRadius) {
-                guard !eatenIDs.contains(food.id) else { continue }
-                guard distance(creature.position, food.position) < creature.eatRadius else { continue }
-                let wantsToEat = (creature.lastAction?.wantsToEat ?? 1.0) > 0.5
-                guard wantsToEat else { continue }
+            // NN-Entscheidung zuerst — spart die Grid-Abfrage wenn die Kreatur nicht fressen will
+            guard (creature.lastAction?.wantsToEat ?? 1.0) > 0.5 else { continue }
+            let eatRadius = creature.eatRadius
+            let eatRSq = Float(eatRadius * eatRadius)
+            let px = Float(creature.position.x)
+            let py = Float(creature.position.y)
+            grid.forEachFood(near: creature.position, within: eatRadius) { food in
+                let dx = Float(food.position.x) - px
+                let dy = Float(food.position.y) - py
+                guard dx * dx + dy * dy < eatRSq, !eatenIDs.contains(food.id) else { return }
                 creature.eat(food: food)
-                if food.type == .plant { eatenPlants += 1 }
+                if food.type == .plant { eatenPlants += 1 } else { eatenCorpses += 1 }
                 eatenIDs.insert(food.id)
             }
         }
         if !eatenIDs.isEmpty {
-            let eatenCorpses = foodSources.filter { eatenIDs.contains($0.id) && $0.type == .corpse }.count
             foodSources.removeAll { eatenIDs.contains($0.id) }
             plantCount  -= eatenPlants
             corpseCount -= eatenCorpses
@@ -340,14 +386,16 @@ final class World {
             guard creatures.count + newborns.count < maxPopulation else { break }
 
             // Grid-Abfrage statt O(candidates.count)-Scan: Partner wird räumlich gesucht.
-            let partner = grid.nearbyCreatures(to: parent.position, within: 40)
-                .first {
-                    $0 !== parent
-                    && !mated.contains(ObjectIdentifier($0))
-                    && ($0.lastAction?.wantsToReproduce ?? 0) > 0.5
-                    && $0.canReproduce
-                    && abs($0.dna.aggression - parent.dna.aggression) < 0.3
-                }
+            var partner: Creature? = nil
+            grid.forEachCreature(near: parent.position, within: 40) { other in
+                guard partner == nil,
+                      other !== parent,
+                      !mated.contains(ObjectIdentifier(other)),
+                      (other.lastAction?.wantsToReproduce ?? 0) > 0.5,
+                      other.canReproduce,
+                      abs(other.dna.aggression - parent.dna.aggression) < 0.3 else { return }
+                partner = other
+            }
 
             if let partner {
                 // Sexuelle Fortpflanzung: Gene beider Eltern werden kombiniert
@@ -501,22 +549,23 @@ final class World {
         )
     }
 
-    func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-        let dx = a.x - b.x
-        let dy = a.y - b.y
-        return sqrt(dx * dx + dy * dy)
-    }
-
-    func nearestFood(to point: CGPoint, within radius: CGFloat) -> FoodSource? {
-        grid.nearbyFood(to: point, within: radius)
-            .filter { distance($0.position, point) < radius }
-            .min(by: { distance($0.position, point) < distance($1.position, point) })
-    }
-
     func nearestCreature(to creature: Creature, within radius: CGFloat) -> Creature? {
-        grid.nearbyCreatures(to: creature.position, within: radius)
-            .filter { $0 != creature && distance($0.position, creature.position) < radius }
-            .min(by: { distance($0.position, creature.position) < distance($1.position, creature.position) })
+        let radiusSq = Float(radius * radius)
+        let px = Float(creature.position.x)
+        let py = Float(creature.position.y)
+        var best: Creature? = nil
+        var bestDistSq = radiusSq
+        grid.forEachCreature(near: creature.position, within: radius) { other in
+            guard other !== creature else { return }
+            let dx = Float(other.position.x) - px
+            let dy = Float(other.position.y) - py
+            let distSq = dx * dx + dy * dy
+            if distSq < bestDistSq {
+                bestDistSq = distSq
+                best = other
+            }
+        }
+        return best
     }
 
 private func normalizeAngle(_ angle: Float) -> Float {

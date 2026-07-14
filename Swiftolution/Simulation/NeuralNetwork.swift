@@ -19,22 +19,25 @@ struct NeuralNetwork {
 
     // MARK: - Gewichte
 
+    // Flache, zeilenweise Buffer statt [[Float]] — zusammenhängender Speicher,
+    // keine Pointer-Indirektion pro Neuron.
     let hiddenCount: Int
-    private var weightsInputHidden:  [[Float]]
-    private var biasHidden:          [Float]
-    private var weightsHiddenOutput: [[Float]]
-    private var biasOutput:          [Float]
+    private var weightsIH: [Float]   // hiddenCount × inputCount
+    private var biasH:     [Float]   // hiddenCount
+    private var weightsHO: [Float]   // outputCount × hiddenCount
+    private var biasO:     [Float]   // outputCount
 
     // MARK: - Init
 
     init(weights: [Float], hiddenCount: Int) {
-        self.hiddenCount = max(NeuralNetwork.minHiddenCount,
-                               min(hiddenCount, NeuralNetwork.maxHiddenCount))
+        let hc = max(NeuralNetwork.minHiddenCount,
+                     min(hiddenCount, NeuralNetwork.maxHiddenCount))
+        self.hiddenCount = hc
         guard weights.count >= NeuralNetwork.totalWeightCount else {
-            weightsInputHidden  = Array(repeating: Array(repeating: 0, count: NeuralNetwork.inputCount), count: self.hiddenCount)
-            biasHidden          = Array(repeating: 0, count: self.hiddenCount)
-            weightsHiddenOutput = Array(repeating: Array(repeating: 0, count: self.hiddenCount), count: NeuralNetwork.outputCount)
-            biasOutput          = Array(repeating: 0, count: NeuralNetwork.outputCount)
+            weightsIH = [Float](repeating: 0, count: hc * NeuralNetwork.inputCount)
+            biasH     = [Float](repeating: 0, count: hc)
+            weightsHO = [Float](repeating: 0, count: NeuralNetwork.outputCount * hc)
+            biasO     = [Float](repeating: 0, count: NeuralNetwork.outputCount)
             return
         }
 
@@ -44,70 +47,66 @@ struct NeuralNetwork {
         func w(_ v: Float) -> Float { v * 2 - 1 }
 
         var idx = 0
-        var wIH = [[Float]]()
-        var bH  = [Float]()
-
-        for _ in 0..<self.hiddenCount {
-            wIH.append(weights[idx..<idx + NeuralNetwork.inputCount].map(w))
-            idx += NeuralNetwork.inputCount
-            bH.append(w(weights[idx]))
-            idx += 1
+        var wIH = [Float](); wIH.reserveCapacity(hc * NeuralNetwork.inputCount)
+        var bH  = [Float](); bH.reserveCapacity(hc)
+        for _ in 0..<hc {
+            for _ in 0..<NeuralNetwork.inputCount {
+                wIH.append(w(weights[idx])); idx += 1
+            }
+            bH.append(w(weights[idx])); idx += 1
         }
 
-        var wHO = [[Float]]()
-        var bO  = [Float]()
-
+        var wHO = [Float](); wHO.reserveCapacity(NeuralNetwork.outputCount * hc)
+        var bO  = [Float](); bO.reserveCapacity(NeuralNetwork.outputCount)
         for _ in 0..<NeuralNetwork.outputCount {
-            wHO.append(weights[idx..<idx + self.hiddenCount].map(w))
-            idx += self.hiddenCount
-            bO.append(w(weights[idx]))
-            idx += 1
+            for _ in 0..<hc {
+                wHO.append(w(weights[idx])); idx += 1
+            }
+            bO.append(w(weights[idx])); idx += 1
         }
 
-        weightsInputHidden  = wIH
-        biasHidden          = bH
-        weightsHiddenOutput = wHO
-        biasOutput          = bO
+        weightsIH = wIH
+        biasH     = bH
+        weightsHO = wHO
+        biasO     = bO
     }
 
     // MARK: - Forward Pass
 
+    // Heißester Pfad der Simulation (Population × 30 Aufrufe pro Frame):
+    // Input- und Hidden-Werte leben in einem Stack-Puffer, keine Heap-Allokation.
     func activate(inputs: SensorInput) -> ActionOutput {
-        let hidden = computeLayer(
-            inputs: inputs.toArray(),
-            weights: weightsInputHidden,
-            biases: biasHidden,
-            activation: tanhActivation
-        )
-        let output = computeLayer(
-            inputs: hidden,
-            weights: weightsHiddenOutput,
-            biases: biasOutput,
-            activation: sigmoid
-        )
-        return ActionOutput(fromArray: output)
-    }
-
-    // MARK: - Hilfsmethoden
-
-    private func computeLayer(
-        inputs: [Float],
-        weights: [[Float]],
-        biases: [Float],
-        activation: (Float) -> Float
-    ) -> [Float] {
-        zip(weights, biases).map { row, bias in
-            let sum = zip(row, inputs).reduce(bias) { $0 + $1.0 * $1.1 }
-            return activation(sum)
+        let hc = hiddenCount
+        let ic = NeuralNetwork.inputCount
+        return withUnsafeTemporaryAllocation(of: Float.self, capacity: ic + hc) { buf in
+            inputs.write(to: buf)
+            weightsIH.withUnsafeBufferPointer { wIH in
+                biasH.withUnsafeBufferPointer { bH in
+                    for h in 0..<hc {
+                        var sum = bH[h]
+                        let rowBase = h * ic
+                        for i in 0..<ic { sum += wIH[rowBase + i] * buf[i] }
+                        buf[ic + h] = tanh(sum)
+                    }
+                }
+            }
+            var out = (Float(0), Float(0), Float(0), Float(0), Float(0))
+            weightsHO.withUnsafeBufferPointer { wHO in
+                biasO.withUnsafeBufferPointer { bO in
+                    @inline(__always)
+                    func neuron(_ o: Int) -> Float {
+                        var sum = bO[o]
+                        let rowBase = o * hc
+                        for h in 0..<hc { sum += wHO[rowBase + h] * buf[ic + h] }
+                        return 1.0 / (1.0 + exp(-sum))   // Sigmoid
+                    }
+                    out = (neuron(0), neuron(1), neuron(2), neuron(3), neuron(4))
+                }
+            }
+            return ActionOutput(turnAngle: out.0, speed: out.1,
+                                wantsToReproduce: out.2, wantsToAttack: out.3,
+                                wantsToEat: out.4)
         }
-    }
-
-    private func sigmoid(_ x: Float) -> Float {
-        1.0 / (1.0 + exp(-x))
-    }
-
-    private func tanhActivation(_ x: Float) -> Float {
-        tanh(x)
     }
 }
 
@@ -133,13 +132,25 @@ struct SensorInput {
     var localPlantDensity:         Float   // 0 = karg, 1 = üppig (omnidirektionaler Geruch, skaliert mit olfaction-Gen)
     var recentFeedingRate:         Float   // 0 = lange nichts gefressen, 1 = gut ernährt
 
-    func toArray() -> [Float] {
-        [angleToFood, distanceToFood, angleToCreature, distanceToCreature,
-         ownEnergy, localDensity, approachVelocity,
-         nearestFoodType, avgNearbyHeading,
-         nearestCreatureRed, nearestCreatureGreen, nearestCreatureBlue,
-         visibleCreatureCount, ownSenescence, visibleFoodCount,
-         localPlantDensity, recentFeedingRate]
+    // Schreibt die Inputs in einen (Stack-)Puffer — Reihenfolge definiert das NN-Input-Layout.
+    func write(to buf: UnsafeMutableBufferPointer<Float>) {
+        buf[0]  = angleToFood
+        buf[1]  = distanceToFood
+        buf[2]  = angleToCreature
+        buf[3]  = distanceToCreature
+        buf[4]  = ownEnergy
+        buf[5]  = localDensity
+        buf[6]  = approachVelocity
+        buf[7]  = nearestFoodType
+        buf[8]  = avgNearbyHeading
+        buf[9]  = nearestCreatureRed
+        buf[10] = nearestCreatureGreen
+        buf[11] = nearestCreatureBlue
+        buf[12] = visibleCreatureCount
+        buf[13] = ownSenescence
+        buf[14] = visibleFoodCount
+        buf[15] = localPlantDensity
+        buf[16] = recentFeedingRate
     }
 }
 
@@ -151,6 +162,15 @@ struct ActionOutput {
     var wantsToReproduce: Float   // > 0.5 = ja
     var wantsToAttack:    Float   // > 0.5 = Angriff auf nächstes Lebewesen
     var wantsToEat:       Float   // > 0.5 = Nahrung in Reichweite aktiv fressen
+
+    init(turnAngle: Float, speed: Float, wantsToReproduce: Float,
+         wantsToAttack: Float, wantsToEat: Float) {
+        self.turnAngle        = turnAngle
+        self.speed            = speed
+        self.wantsToReproduce = wantsToReproduce
+        self.wantsToAttack    = wantsToAttack
+        self.wantsToEat       = wantsToEat
+    }
 
     init(fromArray arr: [Float]) {
         turnAngle        = arr.count > 0 ? arr[0] : 0.5
