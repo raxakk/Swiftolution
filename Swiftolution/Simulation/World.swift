@@ -37,6 +37,18 @@ final class World {
     var plantToxinFactor:    Float = 0.60
     var plantToxinThreshold: Float = 0.50
 
+    // Biome: räumliche Nischen (Fruchtbarkeit, Deckung, Untergrund) + Wasserbarrieren.
+    // Die Karte wird einmal pro Welt erzeugt; das Flag schaltet Wirkung, Spawns und Rendering.
+    let biomeMap: BiomeMap
+    var biomesEnabled: Bool = false
+
+    // Biom an einer Position. Ausgeschaltet → überall neutrale Wiese (alle Faktoren 1.0, passierbar),
+    // sodass sämtliche biomabhängigen Pfade ohne Sonderfall exakt das alte Verhalten liefern.
+    @inline(__always)
+    func biome(at point: CGPoint) -> Biome {
+        biomesEnabled ? biomeMap.biome(at: point) : .grassland
+    }
+
     // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
     var seasonEnabled:   Bool  = false
     var seasonLength:    Int   = 3000    // Ticks pro Jahr
@@ -68,6 +80,7 @@ final class World {
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
         self.grid = SpatialGrid(cellSize: 80, worldSize: size)
+        self.biomeMap = BiomeMap(worldSize: size)
     }
 
     // MARK: - Setup
@@ -77,7 +90,7 @@ final class World {
             var dna = DNA.random()
             // Urknall: alle Lebewesen starten als Pflanzenfresser — Fleischfresser entstehen durch Evolution
             dna.genes[3] = Float.random(in: 0...0.4)
-            creatures.append(Creature(dna: dna, position: randomPosition()))
+            creatures.append(Creature(dna: dna, position: creatureSpawnPosition()))
         }
         for _ in 0..<foodCount {
             foodSources.append(FoodSource(position: spawnPosition()))
@@ -134,7 +147,10 @@ final class World {
     private func sense(for creature: Creature) -> SensorInput {
         let px = Float(creature.position.x)
         let py = Float(creature.position.y)
-        let sightRadius = creature.sightRadius   // computed property — einmal auswerten
+        // Biom am eigenen Standort: Deckung verkürzt die effektive Sichtweite (Wald),
+        // freie Zonen (Wüste) verlängern sie. Betrifft nur die Wahrnehmung, nicht das Gen.
+        let localBiome  = biome(at: creature.position)
+        let sightRadius = creature.sightRadius * CGFloat(localBiome.sightFactor)
         let sightR   = Float(sightRadius)
         let sightRSq = sightR * sightR
         let isFull   = creature.sightAngle >= 2 * .pi * 0.995
@@ -252,6 +268,19 @@ final class World {
             avgNearbyHeading = normalizeAngle(atan2(herdSin, herdCos) - creature.heading) / .pi
         }
 
+        // Richtungsaufgelöste Terrain-Wahrnehmung (nur bei aktiven Biomen; sonst alles 0 →
+        // keine Wirkung auf die NN-Ausgabe, identisches Verhalten wie ohne Biome).
+        var tbGrass: Float = 0, tbForest: Float = 0, tbDesert: Float = 0
+        var tbWetland: Float = 0, tbWater: Float = 0
+        if biomesEnabled {
+            let b = biomeMap.directionalBearings(observerX: px, observerY: py,
+                                                 headingCos: hx, headingSin: hy,
+                                                 sightRadius: sightR,
+                                                 sightAngle: Float(creature.sightAngle))
+            tbGrass = b.grassland; tbForest = b.forest; tbDesert = b.desert
+            tbWetland = b.wetland; tbWater = b.water
+        }
+
         return SensorInput(
             angleToFood:          angleToFood,
             distanceToFood:       distToFood,
@@ -269,7 +298,15 @@ final class World {
             ownSenescence:        min(creature.senescence, 1),
             visibleFoodCount:     visibleFoodCount,
             localPlantDensity:    localPlantDensity,
-            recentFeedingRate:    min(creature.recentFeedingRate / 20.0, 1.0)
+            recentFeedingRate:    min(creature.recentFeedingRate / 20.0, 1.0),
+            localFertility:       min(localBiome.fertility / Biome.maxFertility, 1),
+            localCover:           max(0, min(1 - localBiome.sightFactor, 1)),
+            localDifficulty:      max(0, min(1 - localBiome.speedFactor, 1)),
+            terrainBearingGrassland: tbGrass,
+            terrainBearingForest:    tbForest,
+            terrainBearingDesert:    tbDesert,
+            terrainBearingWetland:   tbWetland,
+            terrainBearingWater:     tbWater
         )
     }
 
@@ -384,7 +421,7 @@ final class World {
         for _ in 0..<count {
             var dna = DNA.random()
             dna.genes[3] = Float.random(in: 0...0.4)   // immer Pflanzenfresser
-            creatures.append(Creature(dna: dna, position: randomPosition()))
+            creatures.append(Creature(dna: dna, position: creatureSpawnPosition()))
         }
     }
 
@@ -470,7 +507,9 @@ final class World {
     // MARK: - Nahrungswachstum
 
     func growFood() {
-        if latitudeGradientEnabled {
+        if biomesEnabled {
+            growFoodWithBiomes()
+        } else if latitudeGradientEnabled {
             growFoodWithGradient()
         } else {
             let fillRatio = Double(plantCount) / Double(maxFood)
@@ -478,6 +517,30 @@ final class World {
             for _ in 0..<max(0, newItems) {
                 foodSources.append(FoodSource(position: randomPosition()))
                 plantCount += 1
+            }
+        }
+    }
+
+    // Biom-gewichtetes Wachstum: die globale logistische Menge wird per Rejection-Sampling
+    // platziert — Akzeptanz ∝ fertility × growthFactor des Bioms. Wasser (0) bekommt nie
+    // Pflanzen, Wüste selten, Sumpf/Wiese oft. So bilden sich fruchtbare und karge Zonen.
+    private func growFoodWithBiomes() {
+        let fillRatio = Double(plantCount) / Double(maxFood)
+        let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
+        guard newItems > 0 else { return }
+        let norm = Biome.maxFertility * 1.40   // max. fertility × max. growthFactor (Sumpf)
+        var added = 0
+        var attempts = 0
+        let maxAttempts = newItems * 12        // Deckel gegen Endlosschleife bei viel Wasser/Wüste
+        while added < newItems && attempts < maxAttempts {
+            attempts += 1
+            let pos = randomPosition()
+            let b   = biomeMap.biome(at: pos)
+            let p   = b.fertility * b.growthFactor / norm
+            if Float.random(in: 0...1) < p {
+                foodSources.append(FoodSource(position: pos))
+                plantCount += 1
+                added += 1
             }
         }
     }
@@ -553,6 +616,7 @@ final class World {
     // Rejection-Sampling: Akzeptanzwahrscheinlichkeit = cos(normierter Polabstand × π/2).
     // Äquator (dy=0) → 100%, Pol (dy=1) → 0%. Mittlere Iterationen: ~1.6.
     private func spawnPosition() -> CGPoint {
+        if biomesEnabled { return biomePlantPosition() }
         guard latitudeGradientEnabled else { return randomPosition() }
         let equatorY = Float(size.height / 2)
         let halfH    = Float(size.height / 2)
@@ -563,15 +627,43 @@ final class World {
         }
     }
 
+    // Startpflanzen biomgewichtet platzieren (gleiches Rejection-Kriterium wie growFoodWithBiomes).
+    // Deckel gegen Endlosschleife, falls die Welt überwiegend Wasser/Wüste ist.
+    private func biomePlantPosition() -> CGPoint {
+        let norm = Biome.maxFertility * 1.40
+        for _ in 0..<40 {
+            let pos = randomPosition()
+            let b   = biomeMap.biome(at: pos)
+            if Float.random(in: 0...1) < b.fertility * b.growthFactor / norm { return pos }
+        }
+        // Fallback: irgendeine passierbare Position (kein Startwasser-Baum)
+        return creatureSpawnPosition()
+    }
+
+    // Passierbare Startposition für Kreaturen — vermeidet Wasser, wenn Biome aktiv sind.
+    private func creatureSpawnPosition() -> CGPoint {
+        guard biomesEnabled else { return randomPosition() }
+        for _ in 0..<40 {
+            let p = randomPosition()
+            if biomeMap.biome(at: p).isPassable { return p }
+        }
+        return randomPosition()
+    }
+
     // Nachwuchs spawnt in einem zufälligen Radius um das Elterntier,
-    // damit Cluster sich nicht selbst verstärken.
+    // damit Cluster sich nicht selbst verstärken. Landet der Wurf im Wasser,
+    // wird zurück auf die (passierbare) Elternposition gefallen.
     private func dispersedPosition(from origin: CGPoint, spread: CGFloat = 30) -> CGPoint {
-        let angle = CGFloat.random(in: 0..<(.pi * 2))
-        let dist  = CGFloat.random(in: 10..<spread)
-        return CGPoint(
-            x: (origin.x + cos(angle) * dist + size.width).truncatingRemainder(dividingBy: size.width),
-            y: (origin.y + sin(angle) * dist + size.height).truncatingRemainder(dividingBy: size.height)
-        )
+        for _ in 0..<8 {
+            let angle = CGFloat.random(in: 0..<(.pi * 2))
+            let dist  = CGFloat.random(in: 10..<spread)
+            let p = CGPoint(
+                x: (origin.x + cos(angle) * dist + size.width).truncatingRemainder(dividingBy: size.width),
+                y: (origin.y + sin(angle) * dist + size.height).truncatingRemainder(dividingBy: size.height)
+            )
+            if !biomesEnabled || biomeMap.biome(at: p).isPassable { return p }
+        }
+        return origin
     }
 
     // Zählt distinkte Arten per Greedy-Clustering auf den Markergenen: jede Kreatur kommt

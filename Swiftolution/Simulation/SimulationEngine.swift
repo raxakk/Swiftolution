@@ -65,7 +65,8 @@ final class SimulationEngine: ObservableObject {
     private func refreshInspection() {
         if let id = selectedCreatureID,
            let creature = world.creatures.first(where: { $0.id == id }) {
-            inspectedCreature = CreatureSnapshot(creature)
+            let biome = world.biomesEnabled ? world.biome(at: creature.position) : nil
+            inspectedCreature = CreatureSnapshot(creature, biome: biome)
         } else if selectedCreatureID != nil {
             inspectedCreature = nil
             selectedCreatureID = nil
@@ -102,6 +103,7 @@ final class SimulationEngine: ObservableObject {
         world.speciationThreshold    = config.speciationThreshold
         world.plantToxinFactor       = config.plantToxinEnabled ? config.plantToxinFactor : 0
         world.plantToxinThreshold    = config.plantToxinThreshold
+        world.biomesEnabled          = config.biomesEnabled
     }
 
     // MARK: - Loop
@@ -206,6 +208,10 @@ struct SimulationConfig {
     var seasonLength:    Int   = 3000   // Ticks pro Jahr
     var seasonAmplitude: Float = 0.70   // 0 = kein Effekt, 1 = Winter → 0% Wachstum
 
+    // Biome: Terrain wird bei Welterzeugung generiert → voller Effekt (Karte, Spawns,
+    // Darstellung) erst nach Neustart. Bei aktiver Karte formen Wasserzonen Barrieren.
+    var biomesEnabled: Bool = false
+
     // Erst beim Neustart wirksam
     var worldWidth:       Int = 2400
     var worldHeight:      Int = 1800
@@ -222,6 +228,7 @@ struct CreatureSnapshot {
     let bodyMassRatio:    Float   // bodyMass / maxBodyMass
     let senescence:       Float   // [0,1] — 0 = jung, >0 = Altersabbau aktiv
     let isHerbivore:      Bool
+    let biomeName:        String?  // aktuelles Biom (nil wenn Biome deaktiviert)
     // DNA
     let size:             Float
     let speed:            Float
@@ -245,9 +252,10 @@ struct CreatureSnapshot {
     let actionEatPlant:   Float
     let actionEatCorpse:  Float
 
-    init(_ c: Creature) {
+    init(_ c: Creature, biome: Biome? = nil) {
         age           = c.age
         maxAge        = c.dna.maxAge
+        biomeName     = biome?.name
         energyRatio   = max(0, min(c.energy / c.maxEnergy, 1))
         let maxBM     = c.dna.size * 60 + 20
         bodyMassRatio = maxBM > 0 ? max(0, min(c.bodyMass / maxBM, 1)) : 0

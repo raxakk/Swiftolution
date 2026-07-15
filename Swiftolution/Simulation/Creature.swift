@@ -102,14 +102,23 @@ final class Creature {
         headingCos = cos(heading)
         headingSin = sin(heading)
 
-        let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3)
+        // Biom am Standort verlangsamt die Fortbewegung (Sand, Morast). Neutral (1.0) ohne Biome.
+        let biomeSpeedFactor = world.biome(at: position).speedFactor
+        let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3) * biomeSpeedFactor
         let speed = output.speed * effectiveMaxSpeed
-        position.x += CGFloat(headingCos * speed)
-        position.y += CGFloat(headingSin * speed)
 
-        // Toroidal wrap-around (Welt-Kanten verbinden sich)
-        position.x = (position.x + world.size.width).truncatingRemainder(dividingBy: world.size.width)
-        position.y = (position.y + world.size.height).truncatingRemainder(dividingBy: world.size.height)
+        // Zielposition mit toroidalem Wrap-around (Welt-Kanten verbinden sich)
+        let newX = (position.x + CGFloat(headingCos * speed) + world.size.width)
+            .truncatingRemainder(dividingBy: world.size.width)
+        let newY = (position.y + CGFloat(headingSin * speed) + world.size.height)
+            .truncatingRemainder(dividingBy: world.size.height)
+
+        // Unpassierbare Biome (Wasser) blockieren die Bewegung — echte Barriere.
+        // Ohne Biome ist alles Wiese (passierbar), also identisches Verhalten wie zuvor.
+        if world.biome(at: CGPoint(x: newX, y: newY)).isPassable {
+            position.x = newX
+            position.y = newY
+        }
     }
 
     func digestibility(for food: FoodSource) -> Float {

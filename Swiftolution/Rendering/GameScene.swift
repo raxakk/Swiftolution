@@ -48,6 +48,26 @@ final class GameScene: SKScene {
         scaleMode       = .aspectFit
         anchorPoint     = .zero
         backgroundColor = NSColor(red: 0.06, green: 0.07, blue: 0.10, alpha: 1)
+        drawBiomes(world: world)
+    }
+
+    // Statische Biom-Kacheln als Hintergrundebene (zPosition -10, hinter allem).
+    // Nur einmal pro Welt gezeichnet; reset() entfernt sie über removeAllChildren().
+    private func drawBiomes(world: World) {
+        guard world.biomesEnabled else { return }
+        let map = world.biomeMap
+        for row in 0..<map.rows {
+            for col in 0..<map.cols {
+                let (r, g, b) = map.biomeAt(col: col, row: row).color
+                let node = SKSpriteNode(color: NSColor(red: r, green: g, blue: b, alpha: 1),
+                                        size: CGSize(width: map.tileSize, height: map.tileSize))
+                node.anchorPoint = .zero
+                node.position = CGPoint(x: CGFloat(col) * map.tileSize,
+                                        y: CGFloat(row) * map.tileSize)
+                node.zPosition = -10
+                addChild(node)
+            }
+        }
     }
 
     func reset(world: World) {

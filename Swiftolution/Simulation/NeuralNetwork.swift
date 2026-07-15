@@ -4,7 +4,7 @@ struct NeuralNetwork {
 
     // MARK: - Architektur
 
-    static let inputCount    = 17
+    static let inputCount    = 25
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
     static let outputCount   = 6   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEatPlant, wantsToEatCorpse
@@ -131,6 +131,18 @@ struct SensorInput {
     var visibleFoodCount:          Float   // normiert [0,1]: min(Anzahl, 10) / 10
     var localPlantDensity:         Float   // 0 = karg, 1 = üppig (omnidirektionaler Geruch, skaliert mit olfaction-Gen)
     var recentFeedingRate:         Float   // 0 = lange nichts gefressen, 1 = gut ernährt
+    // Wahrnehmung des aktuellen Bioms (funktional statt als Ein-aus-Kennung: die Kreatur
+    // "fühlt" die ökologischen Bedingungen ihres Standorts und kann sie unterscheiden).
+    var localFertility:            Float   // 0 = unfruchtbar (Wüste/Wasser), 1 = üppigste Zone (Sumpf)
+    var localCover:                Float   // 0 = freies Blickfeld, 1 = maximale Deckung (Wald)
+    var localDifficulty:           Float   // 0 = leicht begehbar, 1 = zähster Untergrund (Sumpf)
+    // Richtungsaufgelöste Terrain-Wahrnehmung im Sichtfeld: je Biom −1 (links) … +1 (rechts),
+    // 0 = nicht in Sicht oder genau voraus. Erlaubt Zusteuern aufs bevorzugte Terrain / Meiden von Wasser.
+    var terrainBearingGrassland:   Float
+    var terrainBearingForest:      Float
+    var terrainBearingDesert:      Float
+    var terrainBearingWetland:     Float
+    var terrainBearingWater:       Float
 
     // Schreibt die Inputs in einen (Stack-)Puffer — Reihenfolge definiert das NN-Input-Layout.
     func write(to buf: UnsafeMutableBufferPointer<Float>) {
@@ -151,6 +163,14 @@ struct SensorInput {
         buf[14] = visibleFoodCount
         buf[15] = localPlantDensity
         buf[16] = recentFeedingRate
+        buf[17] = localFertility
+        buf[18] = localCover
+        buf[19] = localDifficulty
+        buf[20] = terrainBearingGrassland
+        buf[21] = terrainBearingForest
+        buf[22] = terrainBearingDesert
+        buf[23] = terrainBearingWetland
+        buf[24] = terrainBearingWater
     }
 }
 

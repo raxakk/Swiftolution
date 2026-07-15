@@ -191,7 +191,15 @@ struct SwiftolutionTests {
                 ownSenescence:        Float.random(in: 0...1),
                 visibleFoodCount:     Float.random(in: 0...1),
                 localPlantDensity:    Float.random(in: 0...1),
-                recentFeedingRate:    Float.random(in: 0...1)
+                recentFeedingRate:    Float.random(in: 0...1),
+                localFertility:       Float.random(in: 0...1),
+                localCover:           Float.random(in: 0...1),
+                localDifficulty:      Float.random(in: 0...1),
+                terrainBearingGrassland: Float.random(in: -1...1),
+                terrainBearingForest:    Float.random(in: -1...1),
+                terrainBearingDesert:    Float.random(in: -1...1),
+                terrainBearingWetland:   Float.random(in: -1...1),
+                terrainBearingWater:     Float.random(in: -1...1)
             )
             let out = nn.activate(inputs: input)
             #expect((0...1).contains(out.turnAngle))
@@ -581,5 +589,180 @@ struct SwiftolutionTests {
         world.decayFood()
         #expect(world.foodSources.count == 1)  // plants never decay
         #expect(world.plantCount == 1)
+    }
+
+    // MARK: - Biome
+
+    @Test func waterIsTheOnlyImpassableBiome() {
+        for biome in Biome.allCases {
+            #expect(biome.isPassable == (biome != .water))
+        }
+    }
+
+    @Test func biomePropertiesHaveExpectedOrdering() {
+        // Sumpf ist am fruchtbarsten, Wasser trägt keine Pflanzen.
+        #expect(Biome.wetland.fertility == Biome.maxFertility)
+        #expect(Biome.water.fertility == 0)
+        #expect(Biome.water.growthFactor == 0)
+        // Wald deckt (kurze Sicht), Wüste öffnet den Blick.
+        #expect(Biome.forest.sightFactor < 1)
+        #expect(Biome.desert.sightFactor > 1)
+        // Wiese ist überall der neutrale Referenzpunkt.
+        #expect(Biome.grassland.fertility == 1)
+        #expect(Biome.grassland.speedFactor == 1)
+        #expect(Biome.grassland.sightFactor == 1)
+    }
+
+    @Test func biomeMapCoversWholeWorldWithValidBiomes() {
+        let size = CGSize(width: 2400, height: 1800)
+        let map  = BiomeMap(worldSize: size, tileSize: 200)
+        #expect(map.cols == 12)
+        #expect(map.rows == 9)
+        // Jede Position (inkl. Ränder) liefert ein gültiges Biom.
+        for _ in 0..<500 {
+            let p = CGPoint(x: CGFloat.random(in: 0..<size.width),
+                            y: CGFloat.random(in: 0..<size.height))
+            #expect(Biome.allCases.contains(map.biome(at: p)))
+        }
+    }
+
+    @Test func biomeMapGuaranteesWaterBarriers() {
+        // Über viele Karten hinweg entsteht immer mindestens eine Wasserkachel.
+        for _ in 0..<10 {
+            let map = BiomeMap(worldSize: CGSize(width: 2400, height: 1800), tileSize: 200)
+            var hasWater = false
+            for row in 0..<map.rows {
+                for col in 0..<map.cols where map.biomeAt(col: col, row: row) == .water {
+                    hasWater = true
+                }
+            }
+            #expect(hasWater)
+        }
+    }
+
+    @Test func biomeDisabledWorldBehavesAsNeutralGrassland() {
+        // Ohne Biome liefert biome(at:) überall Wiese → alle Faktoren neutral, alles passierbar.
+        let world = World(size: CGSize(width: 800, height: 600))
+        world.biomesEnabled = false
+        for _ in 0..<50 {
+            let p = CGPoint(x: CGFloat.random(in: 0..<800), y: CGFloat.random(in: 0..<600))
+            #expect(world.biome(at: p) == .grassland)
+        }
+    }
+
+    @Test func creatureCannotMoveIntoWater() {
+        // Kreatur startet neben einer Wasserkachel und steuert direkt hinein → Bewegung blockiert.
+        let world = World(size: CGSize(width: 800, height: 600))
+        world.biomesEnabled = true
+        // Eine passierbare Nachbarkachel einer Wasserkachel suchen und Kreatur dort platzieren,
+        // Blickrichtung auf das Wasser.
+        let map = world.biomeMap
+        var placed = false
+        outer: for row in 0..<map.rows {
+            for col in 0..<map.cols where map.biomeAt(col: col, row: row) == .water {
+                // rechter Nachbar
+                let nCol = col + 1
+                guard nCol < map.cols, map.biomeAt(col: nCol, row: row).isPassable else { continue }
+                let start = CGPoint(x: (CGFloat(nCol) + 0.5) * map.tileSize,
+                                    y: (CGFloat(row) + 0.5) * map.tileSize)
+                var dna = DNA.random()
+                dna.genes[0] = 1.0            // maximale Geschwindigkeit
+                let creature = Creature(dna: dna, position: start)
+                creature.heading = .pi       // nach links (−x) → in Richtung Wasserkachel
+                // Volle Geschwindigkeit, keine Drehung (apply() frischt den Heading-Cache selbst auf)
+                let action = ActionOutput(fromArray: [0.5, 1.0, 0.0, 0.0, 0.0, 0.0])
+                // So weit bewegen, dass die Zielposition in der Wasserkachel läge
+                for _ in 0..<200 { creature.apply(output: action, in: world) }
+                // Kreatur darf nie auf einer Wasserkachel stehen.
+                #expect(world.biome(at: creature.position).isPassable)
+                placed = true
+                break outer
+            }
+        }
+        #expect(placed)  // Testfall wurde tatsächlich aufgebaut
+    }
+
+    @Test func biomeWorldNeverPlacesLifeOnWater() {
+        // Integration: volle Tick-Schleife mit aktiven Biomen. Kernel-Invariante über die
+        // gesamte Simulation — weder lebende Kreaturen noch Pflanzen dürfen je im Wasser landen
+        // (Spawns meiden Wasser, Bewegung wird blockiert, Wachstum lehnt Wasser ab).
+        let world = World(size: CGSize(width: 1600, height: 1200))
+        world.biomesEnabled = true
+        world.populate(creatures: 120, food: world.maxFood)
+
+        // Startzustand
+        for c in world.creatures {
+            #expect(world.biomeMap.biome(at: c.position).isPassable)
+        }
+        for f in world.foodSources where f.type == .plant {
+            #expect(world.biomeMap.biome(at: f.position) != .water)
+        }
+
+        for _ in 0..<400 { world.tick() }
+
+        // Nach 400 Ticks weiterhin verletzungsfrei
+        for c in world.creatures {
+            #expect(world.biomeMap.biome(at: c.position).isPassable)
+        }
+        for f in world.foodSources where f.type == .plant {
+            #expect(world.biomeMap.biome(at: f.position) != .water)
+        }
+        // Die Simulation ist gelaufen (Ticks gezählt, keine Endlosschleife/kein Crash).
+        #expect(world.tickCount == 400)
+    }
+
+    // MARK: - Biom: Richtungswahrnehmung
+
+    @Test func terrainBearingPointsLeftRightToVisibleBiomes() {
+        // Vertikale 1×3-Karte: unten Wasser, Mitte Wiese, oben Sumpf. Beobachter in der Wiese-Mitte,
+        // Blick nach +x. Damit liegt „oben" (+y) rechts, „unten" (−y) links (Konvention von angleToFood).
+        let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
+        let b = map.directionalBearings(observerX: 50, observerY: 150,
+                                        headingCos: 1, headingSin: 0,
+                                        sightRadius: 250, sightAngle: 2 * .pi)
+        #expect(b.wetland > 0.05)    // Sumpf oben → rechts (+)
+        #expect(b.water   < -0.05)   // Wasser unten → links (−)
+        #expect(b.forest == 0)       // nicht vorhanden
+        #expect(b.desert == 0)
+        for v in [b.grassland, b.forest, b.desert, b.wetland, b.water] {
+            #expect(v >= -1 && v <= 1)
+        }
+    }
+
+    @Test func terrainBearingIgnoresTerrainOutsideFOV() {
+        // Schmaler 60°-Kegel nach +x: Sumpf/Wasser liegen bei ±90° → außerhalb des Kegels → 0.
+        let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
+        let b = map.directionalBearings(observerX: 50, observerY: 150,
+                                        headingCos: 1, headingSin: 0,
+                                        sightRadius: 250, sightAngle: .pi / 3)
+        #expect(b.wetland == 0)
+        #expect(b.water == 0)
+    }
+
+    @Test func terrainBearingsZeroWhenNothingInSight() {
+        // Winziger Sichtradius → nur die eigene Kachel (dist 0, sinT 0) → alles 0.
+        let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
+        let b = map.directionalBearings(observerX: 50, observerY: 150,
+                                        headingCos: 1, headingSin: 0,
+                                        sightRadius: 5, sightAngle: 2 * .pi)
+        #expect(b.grassland == 0)
+        #expect(b.wetland == 0)
+        #expect(b.water == 0)
+    }
+
+    @Test func terrainBearingsStayInRangeOnRandomMap() {
+        let map = BiomeMap(worldSize: CGSize(width: 1600, height: 1200), tileSize: 200)
+        for _ in 0..<300 {
+            let px = Float.random(in: 0..<1600), py = Float.random(in: 0..<1200)
+            let hx = Float.random(in: -1...1)
+            let hy = (1 - hx * hx).squareRoot() * (Bool.random() ? 1 : -1)
+            let b = map.directionalBearings(observerX: px, observerY: py,
+                                            headingCos: hx, headingSin: hy,
+                                            sightRadius: Float.random(in: 20...300),
+                                            sightAngle: Float.random(in: (2 * .pi / 3)...(2 * .pi)))
+            for v in [b.grassland, b.forest, b.desert, b.wetland, b.water] {
+                #expect(v >= -1 && v <= 1)
+            }
+        }
     }
 }

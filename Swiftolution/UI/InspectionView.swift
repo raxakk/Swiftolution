@@ -11,6 +11,15 @@ struct InspectionView: View {
                 .font(.caption.bold())
                 .foregroundStyle(snapshot.isHerbivore ? Color.green : Color.red)
 
+            // Aktuelles Biom (nur wenn Biome aktiv)
+            if let biome = snapshot.biomeName {
+                HStack {
+                    Text("Biom").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(biome).font(.caption2.bold())
+                }
+            }
+
             // Zustand
             TraitBar(label: "Energie",
                      value: snapshot.energyRatio,

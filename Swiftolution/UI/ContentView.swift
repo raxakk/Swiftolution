@@ -189,12 +189,17 @@ struct SidebarView: View {
                         )
                     }
 
-                    Toggle("Äquator-Gradient", isOn: Binding(
-                        get: { engine.config.latitudeGradientEnabled },
-                        set: { engine.config.latitudeGradientEnabled = $0 }
-                    ))
-                    .font(.caption)
-                    .toggleStyle(.switch)
+                    // Äquator-Gradient und Biome sind zwei Wege für dieselbe räumliche
+                    // Fruchtbarkeitsverteilung — Biome sind die Obermenge und haben Vorrang.
+                    // Bei aktiven Biomen wäre der Gradient wirkungslos, daher ausgeblendet.
+                    if !engine.config.biomesEnabled {
+                        Toggle("Äquator-Gradient", isOn: Binding(
+                            get: { engine.config.latitudeGradientEnabled },
+                            set: { engine.config.latitudeGradientEnabled = $0 }
+                        ))
+                        .font(.caption)
+                        .toggleStyle(.switch)
+                    }
                 }
 
                 // MARK: Evolution (sofort wirksam)
@@ -296,6 +301,16 @@ struct SidebarView: View {
                         ),
                         range: 10...1000
                     )
+
+                    Toggle("Biome & Terrain", isOn: Binding(
+                        get: { engine.config.biomesEnabled },
+                        set: { engine.config.biomesEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
+                    Text("Wiese, Wald, Wüste, Sumpf und Wasserbarrieren. Neustart nötig.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
