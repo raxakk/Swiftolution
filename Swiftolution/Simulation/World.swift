@@ -32,6 +32,11 @@ final class World {
     var speciationEnabled:   Bool  = true
     var speciationThreshold: Float = 0.45   // max. genetische Distanz für Paarung (Bereich der Distanz: [0, 2])
 
+    // Pflanzengift: Fleischfresser (aggression > Schwelle) zahlen beim Pflanzenfressen eine Giftlast.
+    // 0 = aus. Wird pro Fressvorgang an Creature.eat übergeben.
+    var plantToxinFactor:    Float = 0.60
+    var plantToxinThreshold: Float = 0.50
+
     // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
     var seasonEnabled:   Bool  = false
     var seasonLength:    Int   = 3000    // Ticks pro Jahr
@@ -106,7 +111,7 @@ final class World {
         // Phase 1 — Parallel: Wahrnehmung + NN-Aktivierung.
         // Jede Kreatur liest nur ihren eigenen Zustand und den unveränderlichen Grid — kein Data Race.
         // withUnsafeMutableBufferPointer fixiert den Array-Puffer → COW-freier Schreibzugriff aus n Threads.
-        var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1]), count: count)
+        var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1, 1]), count: count)
         outputs.withUnsafeMutableBufferPointer { buf in
             DispatchQueue.concurrentPerform(iterations: count) { i in
                 let input = sense(for: snapshot[i])
@@ -305,17 +310,25 @@ final class World {
         var eatenPlants  = 0
         var eatenCorpses = 0
         for creature in creatures {
-            // NN-Entscheidung zuerst — spart die Grid-Abfrage wenn die Kreatur nicht fressen will
-            guard (creature.lastAction?.wantsToEat ?? 1.0) > 0.5 else { continue }
+            // NN-Entscheidung pro Nahrungstyp — selektive Diäten sind möglich.
+            let action = creature.lastAction
+            let wantsPlant  = (action?.wantsToEatPlant  ?? 1.0) > 0.5
+            let wantsCorpse = (action?.wantsToEatCorpse ?? 1.0) > 0.5
+            // Spart die Grid-Abfrage, wenn die Kreatur gar nichts fressen will
+            guard wantsPlant || wantsCorpse else { continue }
             let eatRadius = creature.eatRadius
             let eatRSq = Float(eatRadius * eatRadius)
             let px = Float(creature.position.x)
             let py = Float(creature.position.y)
             grid.forEachFood(near: creature.position, within: eatRadius) { food in
+                let wants = food.type == .plant ? wantsPlant : wantsCorpse
+                guard wants else { return }
                 let dx = Float(food.position.x) - px
                 let dy = Float(food.position.y) - py
                 guard dx * dx + dy * dy < eatRSq, !eatenIDs.contains(food.id) else { return }
-                creature.eat(food: food)
+                creature.eat(food: food,
+                             plantToxinFactor: plantToxinFactor,
+                             plantToxinThreshold: plantToxinThreshold)
                 if food.type == .plant { eatenPlants += 1 } else { eatenCorpses += 1 }
                 eatenIDs.insert(food.id)
             }

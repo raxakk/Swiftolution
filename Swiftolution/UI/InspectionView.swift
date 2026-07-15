@@ -66,9 +66,11 @@ struct InspectionView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            TraitBar(label: "Geschwindigkeit", value: snapshot.actionSpeed,     color: .cyan)
-            TraitBar(label: "Fortpflanzung",   value: snapshot.actionReproduce, color: .teal)
-            TraitBar(label: "Angriffsdrang",   value: snapshot.actionAttack,    color: .red)
+            TraitBar(label: "Geschwindigkeit", value: snapshot.actionSpeed,      color: .cyan)
+            TraitBar(label: "Fortpflanzung",   value: snapshot.actionReproduce,  color: .teal)
+            TraitBar(label: "Angriffsdrang",   value: snapshot.actionAttack,     color: .red)
+            TraitBar(label: "Frisst Pflanzen", value: snapshot.actionEatPlant,   color: .green)
+            TraitBar(label: "Frisst Aas",      value: snapshot.actionEatCorpse,  color: .orange)
         }
     }
 

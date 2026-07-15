@@ -100,6 +100,8 @@ final class SimulationEngine: ObservableObject {
         world.latitudeGradientEnabled = config.latitudeGradientEnabled
         world.speciationEnabled      = config.speciationEnabled
         world.speciationThreshold    = config.speciationThreshold
+        world.plantToxinFactor       = config.plantToxinEnabled ? config.plantToxinFactor : 0
+        world.plantToxinThreshold    = config.plantToxinThreshold
     }
 
     // MARK: - Loop
@@ -192,6 +194,13 @@ struct SimulationConfig {
     var speciationEnabled:   Bool  = true
     var speciationThreshold: Float = 0.45
 
+    // Pflanzengift: Anreiz für Fleischfresser, sich von Pflanzen zu spezialisieren.
+    // Erst oberhalb der Schwelle zahlt ein Fleischfresser eine Giftlast beim Pflanzenfressen
+    // (das Aas-Trittstein für Allesfresser darunter bleibt unberührt).
+    var plantToxinEnabled:   Bool  = true
+    var plantToxinFactor:    Float = 0.60   // Giftstärke; 0 = aus. 0.6 → reiner Carnivore verliert an Pflanzen
+    var plantToxinThreshold: Float = 0.50   // ab dieser aggression greift die Giftlast
+
     // Jahreszeiten (sofort wirksam)
     var seasonEnabled:   Bool  = false
     var seasonLength:    Int   = 3000   // Ticks pro Jahr
@@ -233,7 +242,8 @@ struct CreatureSnapshot {
     let actionSpeed:      Float
     let actionReproduce:  Float
     let actionAttack:     Float
-    let actionEat:        Float
+    let actionEatPlant:   Float
+    let actionEatCorpse:  Float
 
     init(_ c: Creature) {
         age           = c.age
@@ -261,7 +271,8 @@ struct CreatureSnapshot {
         actionSpeed     = c.lastAction?.speed             ?? 0
         actionReproduce = c.lastAction?.wantsToReproduce ?? 0
         actionAttack    = c.lastAction?.wantsToAttack    ?? 0
-        actionEat       = c.lastAction?.wantsToEat       ?? 1
+        actionEatPlant  = c.lastAction?.wantsToEatPlant  ?? 1
+        actionEatCorpse = c.lastAction?.wantsToEatCorpse ?? 1
     }
 }
 

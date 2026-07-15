@@ -118,20 +118,34 @@ final class Creature {
             // Pflanzenfresser-Enzyme: aggression=0 → 60 %, aggression=1 → 18 %
             return (1.0 - dna.aggression * 0.7) * 0.6
         case .corpse:
-            // Fleischfresser-Enzyme: aggression=0 → 0 %, aggression=0.5 → 40 %, aggression=1 → 80 %
-            return dna.aggression * 0.80
+            // Aasverwertung als Trittstein: aggression=0 → 20 %, 0.5 → 50 %, 1 → 80 %.
+            // Der Basiswert 0.2 macht Aasfressen schon für Allesfresser lohnend und schafft
+            // einen durchgehenden Fitness-Gradienten Pflanzenfresser → Aasfresser → Jäger.
+            // Ohne ihn liegt zwischen beiden Strategien ein Tal, das nur große Mutationssprünge überwinden.
+            return 0.2 + dna.aggression * 0.60
         }
     }
 
-    func eat(food: FoodSource) {
+    func eat(food: FoodSource, plantToxinFactor: Float = 0, plantToxinThreshold: Float = 0.5) {
         let d = digestibility(for: food)
-        if d < 0.10 {
-            // Zu fremdartige Nahrung: Verdauungsversuch kostet Energie (Übelkeit, Enzymverschwendung)
-            energy = max(0, energy - 5)
-        } else {
-            let gain = food.energyValue * d
+        var gain = food.energyValue * d
+
+        if food.type == .plant {
+            // Pflanzen wehren sich chemisch (Tannine, Alkaloide, Fasern). Pflanzenadaptierte Tiere
+            // (aggression unter der Schwelle) entgiften billig — kein Abzug. Erst darüber zahlt ein
+            // Fleischfresser eine Giftlast ∝ Grad seiner Spezialisierung × gefressener Menge, bis das
+            // Fressen von Pflanzen netto Energie kostet. Fleisch bleibt giftfrei, deshalb bleibt das
+            // Aas-Trittstein (siehe digestibility) für aufsteigende Allesfresser vollständig erhalten.
+            let excess = max(0, dna.aggression - plantToxinThreshold)
+            gain -= excess * plantToxinFactor * food.energyValue
+        }
+
+        if gain > 0 {
             energy = min(energy + gain, maxEnergy)
             energyGainedThisTick += gain
+        } else {
+            // Netto-Verlust: die Giftlast übersteigt den Nährwert (Vergiftung)
+            energy = max(0, energy + gain)
         }
     }
 
@@ -143,7 +157,11 @@ final class Creature {
         // gene=0.5 → identisch zu vorher; gene=1.0 → doppelt so teuer.
         // Erzwingt Spezialisierung — alles auf Maximum ist überproportional teuer.
         let s = dna.size;       let sizeCost:       Float = s * s * 0.12
-        let ag = dna.aggression; let aggressionCost: Float = ag * ag * 0.18
+        // Aggression ist ein Verhaltens-/Muskelmerkmal: die eigentlichen Kosten fallen beim
+        // Angreifen an (aggression×2 pro Angriff in World.attackCreatures), nicht als hohe
+        // Standmiete. Niedrigerer Koeffizient (0.07 statt 0.18) entlastet die doppelte
+        // quadratische Steuer, die Jäger (brauchen Größe UND Aggression) sonst permanent zahlen.
+        let ag = dna.aggression; let aggressionCost: Float = ag * ag * 0.07
         let br = dna.brainSize;  let brainCost:      Float = br * br * 0.04
         let sr = dna.sightRadius; let sa = dna.sightAngle
         let sightCost:      Float = sr * sr * 0.024 + sa * sa * 0.030

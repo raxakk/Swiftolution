@@ -7,7 +7,7 @@ struct NeuralNetwork {
     static let inputCount    = 17
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
-    static let outputCount   = 5   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEat
+    static let outputCount   = 6   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEatPlant, wantsToEatCorpse
 
     // DNA speichert immer Gewichte für maxHiddenCount — unabhängig von der tatsächlichen Gehirngröße.
     // So bleibt die DNA-Länge konstant und Crossover funktioniert ohne Sonderbehandlung.
@@ -90,7 +90,7 @@ struct NeuralNetwork {
                     }
                 }
             }
-            var out = (Float(0), Float(0), Float(0), Float(0), Float(0))
+            var out = (Float(0), Float(0), Float(0), Float(0), Float(0), Float(0))
             weightsHO.withUnsafeBufferPointer { wHO in
                 biasO.withUnsafeBufferPointer { bO in
                     @inline(__always)
@@ -100,12 +100,12 @@ struct NeuralNetwork {
                         for h in 0..<hc { sum += wHO[rowBase + h] * buf[ic + h] }
                         return 1.0 / (1.0 + exp(-sum))   // Sigmoid
                     }
-                    out = (neuron(0), neuron(1), neuron(2), neuron(3), neuron(4))
+                    out = (neuron(0), neuron(1), neuron(2), neuron(3), neuron(4), neuron(5))
                 }
             }
             return ActionOutput(turnAngle: out.0, speed: out.1,
                                 wantsToReproduce: out.2, wantsToAttack: out.3,
-                                wantsToEat: out.4)
+                                wantsToEatPlant: out.4, wantsToEatCorpse: out.5)
         }
     }
 }
@@ -161,15 +161,18 @@ struct ActionOutput {
     var speed:            Float   // [0,1] → wird auf Pixel/Tick skaliert
     var wantsToReproduce: Float   // > 0.5 = ja
     var wantsToAttack:    Float   // > 0.5 = Angriff auf nächstes Lebewesen
-    var wantsToEat:       Float   // > 0.5 = Nahrung in Reichweite aktiv fressen
+    // Getrennte Fress-Schalter → das NN kann selektive Diäten lernen (Pflanzen ja, Aas nein o. umgekehrt).
+    var wantsToEatPlant:  Float   // > 0.5 = Pflanze in Reichweite aktiv fressen
+    var wantsToEatCorpse: Float   // > 0.5 = Leiche in Reichweite aktiv fressen
 
     init(turnAngle: Float, speed: Float, wantsToReproduce: Float,
-         wantsToAttack: Float, wantsToEat: Float) {
+         wantsToAttack: Float, wantsToEatPlant: Float, wantsToEatCorpse: Float) {
         self.turnAngle        = turnAngle
         self.speed            = speed
         self.wantsToReproduce = wantsToReproduce
         self.wantsToAttack    = wantsToAttack
-        self.wantsToEat       = wantsToEat
+        self.wantsToEatPlant  = wantsToEatPlant
+        self.wantsToEatCorpse = wantsToEatCorpse
     }
 
     init(fromArray arr: [Float]) {
@@ -177,6 +180,7 @@ struct ActionOutput {
         speed            = arr.count > 1 ? arr[1] : 0
         wantsToReproduce = arr.count > 2 ? arr[2] : 0
         wantsToAttack    = arr.count > 3 ? arr[3] : 0
-        wantsToEat       = arr.count > 4 ? arr[4] : 1   // Default: fressen (sicherer Start)
+        wantsToEatPlant  = arr.count > 4 ? arr[4] : 1   // Default: fressen (sicherer Start)
+        wantsToEatCorpse = arr.count > 5 ? arr[5] : 1   // Default: fressen (sicherer Start)
     }
 }

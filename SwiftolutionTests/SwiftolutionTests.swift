@@ -198,7 +198,8 @@ struct SwiftolutionTests {
             #expect((0...1).contains(out.speed))
             #expect((0...1).contains(out.wantsToReproduce))
             #expect((0...1).contains(out.wantsToAttack))
-            #expect((0...1).contains(out.wantsToEat))
+            #expect((0...1).contains(out.wantsToEatPlant))
+            #expect((0...1).contains(out.wantsToEatCorpse))
         }
     }
 
@@ -290,12 +291,14 @@ struct SwiftolutionTests {
 
     // MARK: - World: feeding rules (kontinuierliche Verdaulichkeit + Mindest-Threshold)
 
-    @Test func herbivoreGetsZeroFromCorpse() {
-        // aggression=0 → corpse digestibility = 0*0.80 = 0
+    @Test func herbivoreScavengesCorpseAtBaseRate() {
+        // Aas als Trittstein: aggression=0 → corpse digestibility = 0.2 + 0*0.60 = 0.2
+        // (opportunistisches Aasfressen; früher 0 → hartes Fitness-Tal zwischen den Diäten)
         var dna = DNA.random()
         dna.genes[3] = 0.0
         let creature = Creature(dna: dna, position: .zero)
-        #expect(creature.digestibility(for: FoodSource(position: .zero, energyValue: 100, type: .corpse)) == 0)
+        let d = creature.digestibility(for: FoodSource(position: .zero, energyValue: 100, type: .corpse))
+        #expect(abs(d - 0.2) < 0.0001)
     }
 
     @Test func wantsToEatFalseSkipsFood() {
@@ -303,7 +306,7 @@ struct SwiftolutionTests {
         var dna = DNA.random(); dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
         let initialEnergy   = creature.energy
-        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0])  // wantsToEat=0
+        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0])  // wantsToEatPlant/Corpse=0
         world.creatures     = [creature]
         world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
                                           energyValue: 100, type: .plant)]
@@ -314,33 +317,34 @@ struct SwiftolutionTests {
         #expect(creature.energy == initialEnergy)
     }
 
-    @Test func wrongFoodCausesEnergyPenalty() {
-        // Verdaulichkeit < 10%: Fressen kostet Energie (Übelkeit)
+    @Test func herbivoreGainsReducedEnergyFromCorpse() {
+        // Kein "falsches Futter"-Strafmodell mehr: Pflanzenfresser (aggr=0) verwertet Aas zu 20 %
+        // → gewinnt Energie (100 × 0.2 = 20), aber weniger als ein Fleischfresser (80).
         var dna = DNA.random(); dna.genes[3] = 0.0  // reiner Pflanzenfresser
         let creature = Creature(dna: dna, position: .zero)
-        let startEnergy = creature.energy
+        creature.energy = 0
         creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse))
-        #expect(creature.energy < startEnergy)
+        #expect(abs(creature.energy - 20) < 0.01)
     }
 
-    @Test func wrongFoodConsumedAndPenalizesInWorld() {
-        // Kreatur frisst falsche Nahrung (wantsToEat=1, lastAction=nil) → Strafe, Nahrung weg
+    @Test func herbivoreScavengesCorpseInWorld() {
+        // Pflanzenfresser nimmt Aas opportunistisch mit (wantsToEatCorpse default=1) → Leiche weg, Energie steigt
         let world = World(size: CGSize(width: 200, height: 200))
         var dna = DNA.random(); dna.genes[3] = 0.0  // Herbivore
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy = 50  // lastAction=nil → wantsToEat default=1
+        creature.energy = 50  // lastAction=nil → wantsToEatCorpse default=1
         world.creatures   = [creature]
         world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
                                         energyValue: 100, type: .corpse)]
         world.corpseCount = 1
         world.rebuildGrid()
         world.feedCreatures()
-        #expect(world.foodSources.isEmpty)   // Leiche versucht verdaut → weg
-        #expect(creature.energy < 50)        // Energie gesunken durch Strafkosten
+        #expect(world.foodSources.isEmpty)   // Leiche gefressen → weg
+        #expect(creature.energy > 50)        // Energie gestiegen (20 % von 100)
     }
 
     @Test func omnivoreEatsBothFoodTypes() {
-        // aggression=0.5 → plant: (1-0.35)*0.6=0.39; corpse: 0.5*0.80=0.40 — beide verwertbar
+        // aggression=0.5 → plant: (1-0.35)*0.6=0.39; corpse: 0.2+0.5*0.60=0.50 — beide verwertbar
         var dna = DNA.random()
         dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: .zero)
@@ -378,6 +382,40 @@ struct SwiftolutionTests {
         let corpse = FoodSource(position: .zero, energyValue: 100, type: .corpse)
         omni.eat(food: corpse); carn.eat(food: corpse)
         #expect(carn.energy > omni.energy)   // Spezialist gewinnt bei Leichen
+    }
+
+    // MARK: - Pflanzengift (Schwellen-Variante)
+
+    @Test func carnivoreLosesEnergyEatingPlantWithToxin() {
+        // aggr=1.0, Schwelle 0.5, Faktor 0.6: plant d=0.18 → +5.4, Giftlast 0.5×0.6×30=9 → netto −3.6
+        var dna = DNA.random(); dna.genes[3] = 1.0   // reiner Fleischfresser
+        let creature = Creature(dna: dna, position: .zero)
+        creature.energy = 50
+        creature.eat(food: FoodSource(position: .zero, energyValue: 30, type: .plant),
+                     plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
+        #expect(creature.energy < 50)   // Vergiftung übersteigt Nährwert → Netto-Verlust
+    }
+
+    @Test func herbivoreBelowThresholdImmuneToToxin() {
+        // aggr=0.3 unter Schwelle 0.5 → excess=0 → keine Giftlast, voller Pflanzengewinn.
+        // Belegt: der aufgefüllte Teil des Fitness-Tals bleibt unangetastet.
+        var dna = DNA.random(); dna.genes[3] = 0.3
+        let creature = Creature(dna: dna, position: .zero)
+        creature.energy = 0
+        creature.eat(food: FoodSource(position: .zero, energyValue: 30, type: .plant),
+                     plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
+        let expected: Float = 30 * (1 - 0.3 * 0.7) * 0.6   // = 14.22, ungeschmälert
+        #expect(abs(creature.energy - expected) < 0.01)
+    }
+
+    @Test func plantToxinLeavesCorpseGainUntouched() {
+        // Giftlast wirkt nur auf Pflanzen — das Aas-Trittstein bleibt für Fleischfresser voll erhalten.
+        var dna = DNA.random(); dna.genes[3] = 1.0
+        let creature = Creature(dna: dna, position: .zero)
+        creature.energy = 0
+        creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse),
+                     plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
+        #expect(abs(creature.energy - 80) < 0.01)   // 100 × 0.80, kein Abzug
     }
 
     // MARK: - World: energy conservation

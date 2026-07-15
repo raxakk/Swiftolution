@@ -237,6 +237,34 @@ struct SidebarView: View {
                             range: 0.10...1.00
                         )
                     }
+
+                    Toggle("Pflanzengift", isOn: Binding(
+                        get: { engine.config.plantToxinEnabled },
+                        set: { engine.config.plantToxinEnabled = $0 }
+                    ))
+                    .font(.caption)
+                    .toggleStyle(.switch)
+
+                    if engine.config.plantToxinEnabled {
+                        ParamSlider(
+                            label: "Giftstärke",
+                            displayValue: String(format: "%.2f", engine.config.plantToxinFactor),
+                            value: Binding(
+                                get: { Double(engine.config.plantToxinFactor) },
+                                set: { engine.config.plantToxinFactor = Float($0) }
+                            ),
+                            range: 0.00...1.50
+                        )
+                        ParamSlider(
+                            label: "Giftschwelle (aggr)",
+                            displayValue: String(format: "%.2f", engine.config.plantToxinThreshold),
+                            value: Binding(
+                                get: { Double(engine.config.plantToxinThreshold) },
+                                set: { engine.config.plantToxinThreshold = Float($0) }
+                            ),
+                            range: 0.00...1.00
+                        )
+                    }
                 }
 
                 // MARK: Startbedingungen (gilt beim Neustart)
