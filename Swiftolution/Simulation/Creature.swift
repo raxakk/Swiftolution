@@ -60,6 +60,13 @@ final class Creature {
     var attackRadius:        CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
     // Geruchsradius: omnidirektional, unabhängig vom Sichtkegel
     var olfactionSmellRadius: CGFloat { CGFloat(dna.olfaction * 170 + 30) }
+    // Landschaftshorizont: große Terrain-Merkmale (Seen, Waldränder) erkennt man aus weit
+    // größerer Entfernung als ein einzelnes Futterobjekt. Ohne diesen Faktor läge die
+    // Terrain-Wahrnehmung (40–160 px) weit unter der Skala der Biom-Regionen (~600 px) —
+    // die Kreatur stünde mitten in gleichförmigem Terrain und bekäme nie ein Richtungssignal.
+    // Bleibt ans Sicht-Gen gekoppelt: Sichtweite bleibt evolvierbar und kostenpflichtig.
+    static let terrainSightFactor: CGFloat = 4
+    var terrainSightRadius: CGFloat { sightRadius * Creature.terrainSightFactor }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
     var hiddenCount:  Int     {
         NeuralNetwork.minHiddenCount +

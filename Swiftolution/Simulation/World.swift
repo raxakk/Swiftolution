@@ -307,9 +307,13 @@ final class World {
         var tbGrass: Float = 0, tbForest: Float = 0, tbDesert: Float = 0
         var tbWetland: Float = 0, tbWater: Float = 0
         if biomesEnabled {
+            // Terrain auf Landschaftsskala wahrnehmen (Vielfaches der Sichtweite), sonst
+            // steht die Kreatur immer in gleichförmigem Terrain und sieht kein Gefälle.
+            // Deckung (Wald) dämpft auch den Landschaftsblick — daher derselbe sightFactor.
+            let terrainR = Float(creature.terrainSightRadius * CGFloat(localBiome.sightFactor))
             let b = biomeMap.directionalBearings(observerX: px, observerY: py,
                                                  headingCos: hx, headingSin: hy,
-                                                 sightRadius: sightR,
+                                                 sightRadius: terrainR,
                                                  sightAngle: Float(creature.sightAngle))
             tbGrass = b.grassland; tbForest = b.forest; tbDesert = b.desert
             tbWetland = b.wetland; tbWater = b.water

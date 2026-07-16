@@ -743,6 +743,33 @@ struct SwiftolutionTests {
         #expect(b.water <= 1)
     }
 
+    @Test func terrainSightIsMultipleOfFoodSight() {
+        let c = Creature(dna: DNA.random(), position: .zero)
+        #expect(Creature.terrainSightFactor > 1)
+        #expect(c.terrainSightRadius == c.sightRadius * Creature.terrainSightFactor)
+    }
+
+    @Test func terrainSightReachesBeyondFoodSight() {
+        // Landschaft ist auf größerer Skala sichtbar als ein einzelnes Futterobjekt.
+        // Karte: Wasser links (x < 200), Wiese rechts. Beobachter 150 px von der Grenze,
+        // Blick nach +y → Wasser liegt seitlich (gibt also ein Richtungssignal).
+        let map = BiomeMap(tiles: [.water, .grassland], cols: 2, rows: 1, tileSize: 200)
+        let foodSight: Float = 60
+
+        // Mit bloßer Futter-Sichtweite bliebe das Wasser unsichtbar …
+        let near = map.directionalBearings(observerX: 350, observerY: 100,
+                                           headingCos: 0, headingSin: 1,
+                                           sightRadius: foodSight, sightAngle: 2 * .pi)
+        #expect(near.water == 0)
+
+        // … mit dem Landschaftshorizont (4×) wird es wahrgenommen.
+        let far = map.directionalBearings(observerX: 350, observerY: 100,
+                                          headingCos: 0, headingSin: 1,
+                                          sightRadius: foodSight * Float(Creature.terrainSightFactor),
+                                          sightAngle: 2 * .pi)
+        #expect(far.water > 0)
+    }
+
     @Test func terrainBearingIgnoresTerrainOutsideFOV() {
         // Schmaler 60°-Kegel nach +x mit kurzer Sicht: der Kegel bleibt vollständig in der
         // Wiese-Kachel → Wasser (unten) und Sumpf (oben) sind außerhalb → 0.
