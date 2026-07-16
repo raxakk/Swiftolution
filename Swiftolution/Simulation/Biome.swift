@@ -139,51 +139,50 @@ struct BiomeMap {
 
     // Richtungsaufgelöste Terrain-Wahrnehmung im Sichtkegel: für jedes Biom ein Wert in
     // [-1, 1] — Vorzeichen = Richtung (−1 links … +1 rechts, relativ zur Blickrichtung),
-    // Betrag = wie stark dieses Biom im Blickfeld liegt. Nähere Kacheln zählen mehr; die Summe
-    // wird über das gesamte sichtbare Terrain normiert, sodass die Werte gebunden bleiben.
-    // Nicht in Sicht oder genau voraus → ~0. Damit kann das Netz lernen, aufs bevorzugte Terrain
-    // zuzusteuern und Wasser zu meiden. Abtastung über Kachelmittelpunkte — grob, aber für die
-    // Richtungsinformation ausreichend. Read-only → sicher im parallelen sense()-Pfad.
+    // Betrag = wie stark dieses Biom im Blickfeld liegt. Nähere Proben zählen mehr; die Summe
+    // wird über alle Proben normiert, sodass die Werte gebunden bleiben. Gleichförmiges Terrain
+    // rundum → ~0 (die Beiträge heben sich auf), was korrekt ist: kein Richtungssignal.
+    //
+    // Abgetastet wird der EIGENE Sichtkegel (Polarraster: Distanzringe × Winkel), nicht das
+    // Kachelraster. Grund: Sichtradien liegen real bei ~20–160 px, Kacheln sind 200 px groß —
+    // eine Abtastung der Kachelmittelpunkte fand deshalb fast nie eine Kachel in Sichtweite
+    // (nicht mal die eigene) und lieferte konstant 0. Die Auflösung hängt jetzt am Sichtradius
+    // der Kreatur, nicht an der Kachelgröße, und funktioniert bei jedem Radius.
+    //
+    // Die Winkel-Offsets decken den Kegel per Konstruktion ab → keine FOV-Prüfung nötig; bei 360°
+    // ergibt sich automatisch der Vollkreis. Read-only → sicher im parallelen sense()-Pfad.
     // Das Vorzeichen entspricht der Konvention von angleToFood (gleiche Links/Rechts-Deutung fürs NN).
     func directionalBearings(observerX px: Float, observerY py: Float,
                              headingCos hx: Float, headingSin hy: Float,
                              sightRadius sightR: Float, sightAngle: Float)
         -> (grassland: Float, forest: Float, desert: Float, wetland: Float, water: Float) {
 
-        guard sightR > 0 else { return (0, 0, 0, 0, 0) }
-        let ts       = Float(tileSize)
-        let sightRSq = sightR * sightR
-        let full     = sightAngle >= 2 * .pi * 0.995
-        let cosHalf  = cos(sightAngle / 2)
+        guard sightR > 0, sightAngle > 0 else { return (0, 0, 0, 0, 0) }
 
-        let minCol = max(0, Int((px - sightR) / ts))
-        let maxCol = min(cols - 1, Int((px + sightR) / ts))
-        let minRow = max(0, Int((py - sightR) / ts))
-        let maxRow = min(rows - 1, Int((py + sightR) / ts))
-        guard minCol <= maxCol, minRow <= maxRow else { return (0, 0, 0, 0, 0) }
+        let rings = 3     // Distanzringe
+        let rays  = 8     // Winkelproben je Ring, gleichmäßig über den Sichtkegel
+        let heading = atan2(hy, hx)
+        let half    = sightAngle / 2
+        let step    = sightAngle / Float(rays)
 
         // Links/Rechts-Akkumulator je Biom: (grassland, forest, desert, wetland, water)
         var lr: (Float, Float, Float, Float, Float) = (0, 0, 0, 0, 0)
         var totalW: Float = 0
 
-        for row in minRow...maxRow {
-            let cy = (Float(row) + 0.5) * ts
-            for col in minCol...maxCol {
-                let cx = (Float(col) + 0.5) * ts
-                let dx = cx - px, dy = cy - py
-                let distSq = dx * dx + dy * dy
-                guard distSq < sightRSq else { continue }
-                let dist    = distSq.squareRoot()
-                let invDist = dist > 0 ? 1 / dist : 0
-                if !full {
-                    let dot = (dx * hx + dy * hy) * invDist   // cos(Winkel zur Kachel)
-                    guard dot >= cosHalf else { continue }    // außerhalb des Sichtkegels
-                }
-                let sinT = (hx * dy - hy * dx) * invDist      // −1 links … +1 rechts
-                let w    = 1 - dist / sightR                  // Nähe-Gewicht (dist < sightR)
-                totalW  += w
-                let contrib = w * sinT
-                switch tiles[row * cols + col] {
+        for r in 0..<rings {
+            let frac = (Float(r) + 0.5) / Float(rings)   // 0.17, 0.5, 0.83 des Sichtradius
+            let dist = frac * sightR
+            let w    = 1 - frac                          // Nähe zählt mehr
+            for a in 0..<rays {
+                let offset = -half + (Float(a) + 0.5) * step   // relativer Winkel zur Blickrichtung
+                let angle  = heading + offset
+                let x = px + cos(angle) * dist
+                let y = py + sin(angle) * dist
+                totalW += w
+                let contrib = w * sin(offset)            // −1 links … +1 rechts
+                // biome(at:) klemmt außerhalb der Welt auf die Randkachel — am Weltrand
+                // nimmt eine Kreatur dort schlicht dasselbe Randterrain wahr.
+                switch biome(at: CGPoint(x: CGFloat(x), y: CGFloat(y))) {
                 case .grassland: lr.0 += contrib
                 case .forest:    lr.1 += contrib
                 case .desert:    lr.2 += contrib

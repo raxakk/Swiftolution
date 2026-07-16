@@ -729,25 +729,41 @@ struct SwiftolutionTests {
         }
     }
 
+    @Test func terrainPerceptionWorksAtRealisticSightRadii() {
+        // Regression: reale Sichtradien liegen bei ~20–160 px, das Kachelraster bei 200 px.
+        // Die frühere Kachelmittelpunkt-Abtastung fand in diesem Maßstab nie eine Kachel
+        // (nicht mal die eigene) und lieferte konstant 0 — die Wahrnehmung war praktisch tot.
+        // Karte: links Wasser (x < 200), rechts Wiese. Beobachter dicht an der Grenze, 60 px Sicht.
+        let map = BiomeMap(tiles: [.water, .grassland], cols: 2, rows: 1, tileSize: 200)
+        let b = map.directionalBearings(observerX: 210, observerY: 100,
+                                        headingCos: 0, headingSin: 1,   // Blick nach +y
+                                        sightRadius: 60, sightAngle: 2 * .pi)
+        // Wasser liegt bei −x, also relativ zur Blickrichtung rechts (+) → wird wahrgenommen.
+        #expect(b.water > 0)
+        #expect(b.water <= 1)
+    }
+
     @Test func terrainBearingIgnoresTerrainOutsideFOV() {
-        // Schmaler 60°-Kegel nach +x: Sumpf/Wasser liegen bei ±90° → außerhalb des Kegels → 0.
+        // Schmaler 60°-Kegel nach +x mit kurzer Sicht: der Kegel bleibt vollständig in der
+        // Wiese-Kachel → Wasser (unten) und Sumpf (oben) sind außerhalb → 0.
         let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
         let b = map.directionalBearings(observerX: 50, observerY: 150,
                                         headingCos: 1, headingSin: 0,
-                                        sightRadius: 250, sightAngle: .pi / 3)
+                                        sightRadius: 80, sightAngle: .pi / 3)
         #expect(b.wetland == 0)
         #expect(b.water == 0)
     }
 
-    @Test func terrainBearingsZeroWhenNothingInSight() {
-        // Winziger Sichtradius → nur die eigene Kachel (dist 0, sinT 0) → alles 0.
-        let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
-        let b = map.directionalBearings(observerX: 50, observerY: 150,
+    @Test func terrainBearingsCancelOnUniformTerrain() {
+        // Gleichförmiges Terrain rundum → kein Richtungssignal (Beiträge heben sich auf).
+        // Anders als früher heißt "kein Signal" nicht mehr "blind": die Kreatur tastet ihre
+        // Umgebung sehr wohl ab, sie ist nur in jede Richtung gleich.
+        let map = BiomeMap(tiles: [.grassland], cols: 1, rows: 1, tileSize: 400)
+        let b = map.directionalBearings(observerX: 200, observerY: 200,
                                         headingCos: 1, headingSin: 0,
-                                        sightRadius: 5, sightAngle: 2 * .pi)
-        #expect(b.grassland == 0)
-        #expect(b.wetland == 0)
-        #expect(b.water == 0)
+                                        sightRadius: 100, sightAngle: 2 * .pi)
+        #expect(abs(b.grassland) < 0.001)
+        #expect(b.water == 0)   // nicht vorhanden
     }
 
     @Test func terrainBearingsStayInRangeOnRandomMap() {
