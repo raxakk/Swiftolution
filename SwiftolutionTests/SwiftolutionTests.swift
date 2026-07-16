@@ -765,4 +765,67 @@ struct SwiftolutionTests {
             }
         }
     }
+
+    // MARK: - Todesursachen & Ereignisstrom
+
+    @Test func deathByStarvationClassified() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[4] = 1.0   // maxAge groß → kein Alterstod
+        let c = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        c.energy = -1                                // Energie-Tod, kein Angreifer
+        world.creatures = [c]
+        world.checkDeaths()
+        #expect(world.deathsByStarvation == 1)
+        #expect(world.deathsByPredation == 0)
+        #expect(world.deathsByOldAge == 0)
+    }
+
+    @Test func deathByPredationClassified() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[4] = 1.0
+        let victim = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        let killer = Creature(dna: DNA.random(), position: CGPoint(x: 100, y: 100))
+        victim.energy = -1
+        victim.lastAttacker = killer                 // diesen Tick angegriffen → Prädation
+        world.creatures = [victim]                   // killer muss nicht in der Liste sein
+        world.checkDeaths()
+        #expect(world.deathsByPredation == 1)
+        #expect(world.deathsByStarvation == 0)
+    }
+
+    @Test func deathByOldAgeClassified() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        var dna = DNA.random(); dna.genes[4] = 0.001 // maxAge = 1
+        let c = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        c.age = 100_000                              // ageRatio riesig → Alterswurf feuert sicher
+        c.energy = 50                                // lebendig → kein Energie-Tod
+        world.creatures = [c]
+        world.checkDeaths()
+        #expect(world.deathsByOldAge == 1)
+        #expect(world.deathsByStarvation == 0)
+        #expect(world.deathsByPredation == 0)
+    }
+
+    @Test func eventRecordingCapturesDeathWithCause() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        world.eventRecording = true
+        var dna = DNA.random(); dna.genes[4] = 1.0
+        let c = Creature(dna: dna, position: CGPoint(x: 50, y: 60)); c.energy = -1
+        world.creatures = [c]
+        world.checkDeaths()
+        #expect(world.events.count == 1)
+        #expect(world.events.first?.kind == .death)
+        #expect(world.events.first?.cause == .starvation)
+    }
+
+    @Test func eventRecordingOffKeepsBufferEmpty() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        // eventRecording bleibt false (Default)
+        var dna = DNA.random(); dna.genes[4] = 1.0
+        let c = Creature(dna: dna, position: .zero); c.energy = -1
+        world.creatures = [c]
+        world.checkDeaths()
+        #expect(world.events.isEmpty)
+        #expect(world.deathsByStarvation == 1)   // Zählung läuft dennoch
+    }
 }

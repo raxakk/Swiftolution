@@ -1,6 +1,24 @@
 import Foundation
 import CoreGraphics
 
+// Warum eine Kreatur gestorben ist — für Diagnose der Populationsdynamik.
+enum DeathCause: String {
+    case starvation   // Energie ≤ 0 ohne Angreifer (Stoffwechsel/Hunger, Vergiftung)
+    case predation    // Energie ≤ 0 nach Angriff in diesem Tick
+    case oldAge       // Alters-Mortalität (Gompertz-Wurf) trotz vorhandener Energie
+}
+
+// Ein einzelnes Simulationsereignis für den optionalen Live-Stream (World.events).
+struct SimEvent {
+    enum Kind: String { case birth, death }
+    let kind: Kind
+    let tick: Int
+    let x: Float
+    let y: Float
+    let aggression: Float
+    let cause: DeathCause?   // nur bei .death
+}
+
 final class World {
 
     // MARK: - Eigenschaften
@@ -15,6 +33,16 @@ final class World {
     var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
     var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
     var totalDeaths: Int = 0
+
+    // Todesursachen (kumulativ) — welcher Faktor die Population wie stark drückt.
+    var deathsByStarvation = 0
+    var deathsByPredation  = 0
+    var deathsByOldAge     = 0
+
+    // Optionaler Live-Ereignisstrom (Geburten/Tode). Nur bei eventRecording befüllt;
+    // ein Beobachter (z. B. der Headless-Runner) leert `events` nach jedem tick().
+    var eventRecording = false
+    var events: [SimEvent] = []
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -387,10 +415,29 @@ final class World {
         for creature in creatures {
             let ageRatio    = Float(creature.age) / Float(creature.dna.maxAge)
             let deathChance = 0.0001 + ageRatio * ageRatio * 0.003
-            if creature.isAlive && Float.random(in: 0...1) >= deathChance {
+            let survivesAge = Float.random(in: 0...1) >= deathChance
+            if creature.isAlive && survivesAge {
                 survivors.append(creature)
             } else {
                 totalDeaths += 1
+                // Ursache: Energie-Tod (Hunger vs. Prädation je nach Angreifer diesen Tick),
+                // sonst Alters-Mortalität (lebendig, aber Gompertz-Wurf ausgelöst).
+                let cause: DeathCause
+                if !creature.isAlive {
+                    cause = creature.lastAttacker != nil ? .predation : .starvation
+                } else {
+                    cause = .oldAge
+                }
+                switch cause {
+                case .starvation: deathsByStarvation += 1
+                case .predation:  deathsByPredation  += 1
+                case .oldAge:     deathsByOldAge      += 1
+                }
+                if eventRecording {
+                    events.append(SimEvent(kind: .death, tick: tickCount,
+                                           x: Float(creature.position.x), y: Float(creature.position.y),
+                                           aggression: creature.dna.aggression, cause: cause))
+                }
                 if creature.bodyMass > 1 {
                     var corpseEnergy = creature.bodyMass
                     if let killer = creature.lastAttacker, killer.isAlive {
@@ -498,6 +545,13 @@ final class World {
         }
 
         if !newborns.isEmpty {
+            if eventRecording {
+                for child in newborns {
+                    events.append(SimEvent(kind: .birth, tick: tickCount,
+                                           x: Float(child.position.x), y: Float(child.position.y),
+                                           aggression: child.dna.aggression, cause: nil))
+                }
+            }
             creatures.append(contentsOf: newborns)
             totalBirths += newborns.count
             generation  += 1
