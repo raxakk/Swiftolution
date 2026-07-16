@@ -43,6 +43,10 @@ final class World {
     // ein Beobachter (z. B. der Headless-Runner) leert `events` nach jedem tick().
     var eventRecording = false
     var events: [SimEvent] = []
+
+    // Speichert die Wahrnehmung jeder Kreatur pro Tick (Creature.lastSensors) — nur für
+    // Trace/Diagnose. Aus, weil es sonst pro Tick population × 25 Floats kostet.
+    var sensorRecording = false
     var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
     var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
     var mutationRate:     Float  = 0.05
@@ -156,6 +160,8 @@ final class World {
         outputs.withUnsafeMutableBufferPointer { buf in
             DispatchQueue.concurrentPerform(iterations: count) { i in
                 let input = sense(for: snapshot[i])
+                // Jede Iteration schreibt ausschließlich ihre eigene Kreatur → kein Data Race.
+                if sensorRecording { snapshot[i].lastSensors = input }
                 buf[i] = snapshot[i].brain.activate(inputs: input)
             }
         }

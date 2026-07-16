@@ -34,6 +34,13 @@ struct Options {
     var samples         = 3        // Anzahl Beispielindividuen (detail/json)
     var mapCols         = 60       // Breite der ASCII-Weltkarte
     var foodSteps: [(tick: Int, capacity: Int)] = []   // Nahrungsabsenkungen zur Laufzeit
+    // Verhaltens-Trace: wenige Individuen über ein enges Fenster, Wahrnehmung → Entscheidung.
+    var trace           = false
+    var traceFrom       = 0
+    var traceTo         = -1       // -1 → traceFrom + 200 (sinnvolles Default-Fenster)
+    var traceEvery      = 1
+    var traceCreatures  = 3
+    var traceWeights    = false    // rohe NN-Gewichte im Steckbrief (518 Zahlen/Kreatur!)
 }
 
 func printUsage() {
@@ -63,6 +70,12 @@ func printUsage() {
       --detail             ASCII-Weltkarte + Merkmals-Histogramme + Beispielindividuen
       --json               strukturierte JSON-Lines-Snapshots (ein Objekt je Intervall)
       --events             Live-Ereignisstrom: Geburt/Tod je Tick als NDJSON (Tod inkl. Ursache)
+      --trace              Verhaltens-Trace: pro Tick Wahrnehmung → Entscheidung einzelner Kreaturen
+      --trace-from T       Trace-Fenster ab Tick T (Default 0)
+      --trace-to T         Trace-Fenster bis Tick T (Default: traceFrom + 200)
+      --trace-every N      nur jeden N-ten Tick tracen (Default 1)
+      --trace-creatures N  Anzahl verfolgter Individuen (Default 3: ältestes, fittestes, zufällig)
+      --trace-weights      rohe NN-Gewichte im Steckbrief mitgeben (518 Zahlen je Kreatur)
       --samples N          Anzahl Beispielindividuen bei --detail/--json (Default 3)
       --map-cols N         Breite der ASCII-Weltkarte (Default 60)
       --csv                Ausgabe als CSV-Tabelle
@@ -102,6 +115,12 @@ func parseArgs() -> Options {
         case "--no-speciation":    o.speciation = false
         case "--no-plant-toxin":   o.plantToxin = false
         case "--csv":              o.csv = true
+        case "--trace-from":       if let v = value(), let n = Int(v) { o.traceFrom = n; i += 1 }              else { fail("--trace-from braucht eine Zahl") }
+        case "--trace-to":         if let v = value(), let n = Int(v) { o.traceTo = n; i += 1 }                else { fail("--trace-to braucht eine Zahl") }
+        case "--trace-every":      if let v = value(), let n = Int(v) { o.traceEvery = max(1, n); i += 1 }     else { fail("--trace-every braucht eine Zahl") }
+        case "--trace-creatures":  if let v = value(), let n = Int(v) { o.traceCreatures = max(1, n); i += 1 } else { fail("--trace-creatures braucht eine Zahl") }
+        case "--trace":            o.trace = true
+        case "--trace-weights":    o.traceWeights = true
         case "--detail":           o.detail = true
         case "--json":             o.json = true
         case "--events":           o.events = true
@@ -341,6 +360,70 @@ func printDetail(_ s: SnapshotJSON, biomes: Bool) {
     print("")
 }
 
+// MARK: - Verhaltens-Trace (für Analyse durch einen Beobachter, nicht für Maschinen-Parsing)
+
+func n2(_ v: Float, _ p: Int = 2) -> String { String(format: "%.\(p)f", v) }
+func sg(_ v: Float, _ p: Int = 2) -> String { String(format: "%+.\(p)f", v) }
+func shortID(_ c: Creature) -> String { String(c.id.uuidString.prefix(4)) }
+
+func printTraceLegend() {
+    print("""
+    ── TRACE ─────────────────────────────────────────────────────────────────────
+      Zeile 1: t=Tick #id (x,y) h=Heading E=Energieanteil a=Alter [Biom]
+        F(a d T n) nächste Nahrung — a Winkel (−links/+rechts), d Distanz, T P=Pflanze/K=Kadaver, n sichtbare Menge
+        C(a d v n) nächste Kreatur — v Annäherung (+kommt näher/−flieht)
+        dn Dichte | hd Herdenrichtung | sm Pflanzengeruch | fd Fressrate | sn Seneszenz
+        fert/cov/dif Biom am Standort | bear Terrain-Peilung (. Wiese  f Wald  d Wüste  w Sumpf  ~ Wasser)
+      Zeile 2: ⇒ NN-Entscheidung — turn (−links/+rechts) spd rep atk eatP eatC
+    ──────────────────────────────────────────────────────────────────────────────
+    """)
+}
+
+func printTraceProfile(_ c: Creature, _ world: World, _ o: Options) {
+    let b = o.biomes ? " [\(world.biome(at: c.position).name)]" : ""
+    print("── Steckbrief #\(shortID(c))\(b)  Alter \(c.age)/\(c.dna.maxAge)  E \(n2(c.energy / c.maxEnergy))")
+    print("   DNA: size \(n2(c.dna.size))  speed \(n2(c.dna.speed))  aggr \(n2(c.dna.aggression))"
+        + "  sight \(n2(c.dna.sightRadius)) (\(Int(c.sightRadius))px)  fov \(Int(c.sightAngle * 180 / .pi))°"
+        + "  turn \(n2(c.dna.turnRate))  reproThr \(n2(c.dna.reproductionThreshold))"
+        + "  litter \(c.dna.litterSize)  brain \(c.hiddenCount)  olf \(n2(c.dna.olfaction))"
+        + "  rgb(\(n2(c.dna.red)),\(n2(c.dna.green)),\(n2(c.dna.blue)))")
+    if o.traceWeights {
+        let w = c.dna.neuralWeights()
+        print("   NN-Gewichte (\(w.count)): " + w.map { n2($0, 3) }.joined(separator: " "))
+    }
+}
+
+func printTraceLine(_ c: Creature, _ world: World, _ o: Options) {
+    guard let s = c.lastSensors else { return }
+    let biome = o.biomes ? " [\(world.biome(at: c.position).name)]" : ""
+    let foodT = s.nearestFoodType > 0.5 ? "K" : "P"
+    print("t=\(world.tickCount) #\(shortID(c)) (\(Int(c.position.x)),\(Int(c.position.y)))"
+        + " h\(sg(c.heading)) E\(n2(c.energy / c.maxEnergy)) a\(c.age)\(biome)"
+        + " | F(a\(sg(s.angleToFood)) d\(n2(s.distanceToFood)) \(foodT) n\(n2(s.visibleFoodCount, 1)))"
+        + " | C(a\(sg(s.angleToCreature)) d\(n2(s.distanceToCreature)) v\(sg(s.approachVelocity)) n\(n2(s.visibleCreatureCount, 1)))"
+        + " | dn\(n2(s.localDensity)) hd\(sg(s.avgNearbyHeading)) sm\(n2(s.localPlantDensity)) fd\(n2(s.recentFeedingRate)) sn\(n2(s.ownSenescence))"
+        + " | fert\(n2(s.localFertility)) cov\(n2(s.localCover)) dif\(n2(s.localDifficulty))"
+        + " | bear .\(sg(s.terrainBearingGrassland)) f\(sg(s.terrainBearingForest)) d\(sg(s.terrainBearingDesert)) w\(sg(s.terrainBearingWetland)) ~\(sg(s.terrainBearingWater))")
+    if let a = c.lastAction {
+        print("       ⇒ turn\(sg((a.turnAngle - 0.5) * 2)) spd\(n2(a.speed)) rep\(n2(a.wantsToReproduce))"
+            + " atk\(n2(a.wantsToAttack)) eatP\(n2(a.wantsToEatPlant)) eatC\(n2(a.wantsToEatCorpse))")
+    }
+}
+
+// Auswahl: ältestes + energiereichstes (bewährte Strategien) + zufällige als Baseline.
+func selectTraced(_ world: World, _ count: Int) -> [Creature] {
+    var picked: [Creature] = []
+    func add(_ c: Creature?) {
+        guard let c, !picked.contains(where: { $0 === c }), picked.count < count else { return }
+        picked.append(c)
+    }
+    add(world.creatures.max(by: { $0.age < $1.age }))
+    add(world.creatures.max(by: { ($0.energy / $0.maxEnergy) < ($1.energy / $1.maxEnergy) }))
+    var shuffled = world.creatures.shuffled()
+    while picked.count < count, let c = shuffled.popLast() { add(c) }
+    return picked
+}
+
 // MARK: - Lauf
 
 let o = parseArgs()
@@ -362,6 +445,7 @@ world.speciationEnabled = o.speciation
 world.plantToxinFactor  = o.plantToxin ? 0.60 : 0
 world.plantToxinThreshold = 0.50
 world.eventRecording    = o.events
+world.sensorRecording   = o.trace   // Wahrnehmung nur speichern, wenn getract wird
 
 world.populate(creatures: o.creatures, food: world.maxFood)
 
@@ -418,6 +502,15 @@ if o.csv && !ndjson {
 let foodSteps = o.foodSteps.sorted { $0.tick < $1.tick }
 var nextStep = 0
 
+// Trace-Fenster: Default 200 Ticks ab traceFrom — bewusst eng, der Trace ist zum Lesen da.
+let traceTo = o.traceTo >= 0 ? o.traceTo : o.traceFrom + 200
+var traced: [Creature] = []
+var traceStarted = false
+if o.trace {
+    let lines = max(0, (traceTo - o.traceFrom) / o.traceEvery) * o.traceCreatures * 2
+    FileHandle.standardError.write(Data("Trace: Tick \(o.traceFrom)–\(traceTo), jeder \(o.traceEvery). Tick, \(o.traceCreatures) Individuen → ca. \(lines) Zeilen (~\(lines * 115 / 1024) KB)\n".utf8))
+}
+
 emitSnapshot()   // Ausgangszustand (Tick 0)
 let start = Date()
 for _ in 0..<o.ticks {
@@ -429,6 +522,31 @@ for _ in 0..<o.ticks {
         nextStep += 1
     }
     streamEvents()                                          // Ereignisse dieses Ticks live
+
+    // Verhaltens-Trace: dieselben Individuen über das Fenster verfolgen (nicht jedes Mal neue),
+    // damit zusammenhängende Trajektorien entstehen.
+    if o.trace, world.tickCount >= o.traceFrom, world.tickCount <= traceTo {
+        if !traceStarted {
+            traceStarted = true
+            printTraceLegend()
+            traced = selectTraced(world, o.traceCreatures)
+            for c in traced { printTraceProfile(c, world, o) }
+        }
+        if (world.tickCount - o.traceFrom) % o.traceEvery == 0, !traced.isEmpty {
+            let alive = Set(world.creatures.map { ObjectIdentifier($0) })
+            var survivors: [Creature] = []
+            for c in traced {
+                if alive.contains(ObjectIdentifier(c)) {
+                    printTraceLine(c, world, o)
+                    survivors.append(c)
+                } else {
+                    print("t=\(world.tickCount) #\(shortID(c)) † gestorben — Trace endet für dieses Individuum")
+                }
+            }
+            traced = survivors
+        }
+    }
+
     if world.tickCount % o.interval == 0 { emitSnapshot() } // periodische Zusammenfassung
 }
 let elapsed = Date().timeIntervalSince(start)

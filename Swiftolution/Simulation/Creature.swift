@@ -40,6 +40,9 @@ final class Creature {
         return max(0, (progress - 0.7) / 0.3)
     }
     var lastAction: ActionOutput?
+    // Letzte Wahrnehmung — nur befüllt, wenn World.sensorRecording an ist (Trace/Diagnose).
+    // Erlaubt es, die NN-Entscheidung zu erklären: Wahrnehmung → Aktion.
+    var lastSensors: SensorInput?
     weak var lastAttacker: Creature?
 
     // MARK: - Abgeleitete Werte aus DNA
