@@ -33,6 +33,7 @@ struct Options {
     var events          = false    // Live-Ereignisstrom (Geburten/Tode je Tick) als NDJSON
     var samples         = 3        // Anzahl Beispielindividuen (detail/json)
     var mapCols         = 60       // Breite der ASCII-Weltkarte
+    var foodSteps: [(tick: Int, capacity: Int)] = []   // Nahrungsabsenkungen zur Laufzeit
 }
 
 func printUsage() {
@@ -51,6 +52,8 @@ func printUsage() {
       --mutation F         Mutationsrate (Default 0.05)
       --mutation-strength F Mutationsstärke (Default 0.10)
       --min-spawn N        Mindest-Spawn: reseedet unter N Kreaturen (Default aus)
+      --reduce-food-at T C Bei Tick T die Nahrungskapazität auf C setzen (mehrfach möglich →
+                           stufenweise Absenkung; deine Methode: erst max bootstrappen, dann senken)
       --biomes             Biome & Terrain aktivieren
       --seasons            Jahreszeiten aktivieren
       --no-speciation      Assortative Paarung / Artbildung aus
@@ -88,6 +91,10 @@ func parseArgs() -> Options {
         case "--mutation":         if let v = value(), let n = Float(v)  { o.mutationRate = n; i += 1 }     else { fail("--mutation braucht eine Zahl") }
         case "--mutation-strength": if let v = value(), let n = Float(v) { o.mutationStrength = n; i += 1 } else { fail("--mutation-strength braucht eine Zahl") }
         case "--min-spawn":        if let v = value(), let n = Int(v)    { o.minSpawn = n; i += 1 }         else { fail("--min-spawn braucht eine Zahl") }
+        case "--reduce-food-at":
+            if i + 2 < args.count, let t = Int(args[i + 1]), let cap = Int(args[i + 2]) {
+                o.foodSteps.append((t, cap)); i += 2
+            } else { fail("--reduce-food-at braucht TICK und KAPAZITÄT") }
         case "--samples":          if let v = value(), let n = Int(v)    { o.samples = max(0, n); i += 1 }  else { fail("--samples braucht eine Zahl") }
         case "--map-cols":         if let v = value(), let n = Int(v)    { o.mapCols = max(10, n); i += 1 } else { fail("--map-cols braucht eine Zahl") }
         case "--biomes":           o.biomes = true
@@ -407,10 +414,20 @@ if o.csv && !ndjson {
     print(humanHeader)
 }
 
+// Nahrungsabsenkungen nach Tick sortiert abarbeiten (Kapazität wird √-flächenskaliert wie beim Start).
+let foodSteps = o.foodSteps.sorted { $0.tick < $1.tick }
+var nextStep = 0
+
 emitSnapshot()   // Ausgangszustand (Tick 0)
 let start = Date()
 for _ in 0..<o.ticks {
     world.tick()
+    while nextStep < foodSteps.count && world.tickCount >= foodSteps[nextStep].tick {
+        let cap = foodSteps[nextStep].capacity
+        world.maxFood = Int(Double(cap) * scale)
+        FileHandle.standardError.write(Data("» Tick \(world.tickCount): Nahrungskapazität → \(cap) (maxFood \(world.maxFood))\n".utf8))
+        nextStep += 1
+    }
     streamEvents()                                          // Ereignisse dieses Ticks live
     if world.tickCount % o.interval == 0 { emitSnapshot() } // periodische Zusammenfassung
 }
