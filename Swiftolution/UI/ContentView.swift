@@ -122,6 +122,11 @@ struct SidebarView: View {
 
                 // MARK: Umgebung (sofort wirksam)
                 SidebarSection(title: "Umgebung") {
+                    // Obergrenze 3000: die Kapazität ist ein Referenzwert für 800×600 und wird
+                    // mit √Fläche skaliert. Die Maximalwelt (4800×3600) hat die 36-fache Fläche,
+                    // bekommt aber nur den Faktor 6 — die Dichte fiele auf ein Sechstel. Erst bei
+                    // 3000 erreicht sie dieselbe Dichte wie die Standardwelt bei 1500, was die
+                    // Bootstrap-Phase (Start mit maximaler Nahrung) auch in großen Welten trägt.
                     ParamSlider(
                         label: "Nahrungskapazität",
                         displayValue: "\(engine.config.foodCapacity)",
@@ -129,7 +134,7 @@ struct SidebarView: View {
                             get: { Double(engine.config.foodCapacity) },
                             set: { engine.config.foodCapacity = Int($0) }
                         ),
-                        range: 100...1500
+                        range: 100...3000
                     )
 
                     ParamSlider(
