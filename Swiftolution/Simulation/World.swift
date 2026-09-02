@@ -64,6 +64,12 @@ final class World {
     var speciationEnabled:   Bool  = true
     var speciationThreshold: Float = 0.45   // max. genetische Distanz für Paarung (Bereich der Distanz: [0, 2])
 
+    // Paarungsreichweite in px: wie nah zwei Partner sich sein müssen. Begrenzt die
+    // Reichweite des Genflusses — je kleiner, desto kleinräumiger können Arten sich trennen.
+    // Echter Parameter, seit reproduceCreatures die Distanz explizit prüft; zuvor ergab sie
+    // sich aus der Zellgröße des Grids und lag faktisch bei ~90 px.
+    static let mateRadius: CGFloat = 40
+
     // Pflanzengift: Fleischfresser (aggression > Schwelle) zahlen beim Pflanzenfressen eine Giftlast.
     // 0 = aus. Wird pro Fressvorgang an Creature.eat übergeben.
     var plantToxinFactor:    Float = 0.60
@@ -503,13 +509,22 @@ final class World {
 
             // Grid-Abfrage statt O(candidates.count)-Scan: Partner wird räumlich gesucht.
             // Paarungsschranke: bei aktiver Speziation genetische Distanz, sonst nur Aggressions-Nische.
+            // Die Distanz wird explizit geprüft: ohne die Prüfung bestimmte der gescannte
+            // Zellblock die Reichweite, womit die Zellgröße (ein Performance-Parameter) die
+            // Paarungsreichweite festlegte — real ~90 px Median statt der angegebenen 40.
             var partner: Creature? = nil
-            grid.forEachCreature(near: parent.position, within: 40) { other in
+            let mateRSq = Float(World.mateRadius * World.mateRadius)
+            let parentX = Float(parent.position.x)
+            let parentY = Float(parent.position.y)
+            grid.forEachCreature(near: parent.position, within: World.mateRadius) { other in
                 guard partner == nil,
                       other !== parent,
                       !mated.contains(ObjectIdentifier(other)),
                       (other.lastAction?.wantsToReproduce ?? 0) > 0.5,
                       other.canReproduce else { return }
+                let dx = Float(other.position.x) - parentX
+                let dy = Float(other.position.y) - parentY
+                guard dx * dx + dy * dy < mateRSq else { return }
                 let compatible = speciationEnabled
                     ? parent.dna.geneticDistance(to: other.dna) <= speciationThreshold
                     : abs(other.dna.aggression - parent.dna.aggression) < 0.3
