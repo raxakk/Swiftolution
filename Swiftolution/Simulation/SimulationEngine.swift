@@ -116,9 +116,20 @@ final class SimulationEngine: ObservableObject {
             .sink { [weak self] _ in self?.tick() }
     }
 
+    // Deckel für den aufholbaren Rückstand (≈2 Frames bei 10×). Ohne Deckel würde der
+    // Rückstand bei echter Überlast unbegrenzt wachsen, die Batches immer größer werden
+    // und die UI einfrieren — der Multiplikator bleibt dann eben unerreichbar.
+    private static let maxTickBacklog: Double = 10
+
     private func tick() {
-        guard !isPaused, !simBusy else { return }
+        guard !isPaused else { return }
+        // Budget auch dann akkumulieren, wenn die Sim noch rechnet: sonst geht das
+        // Tick-Budget jedes Frames verloren, in dem simBusy gesetzt war, und die Sim
+        // legt zwischen den Batches Pausen ein statt zu rechnen — sie lief dadurch
+        // dauerhaft langsamer als der eingestellte Multiplikator.
         tickAccumulator += 30.0 * speedMultiplier / 60.0
+        tickAccumulator = min(tickAccumulator, SimulationEngine.maxTickBacklog)
+        guard !simBusy else { return }
         let n = Int(tickAccumulator)
         tickAccumulator -= Double(n)
         guard n > 0 else { return }
