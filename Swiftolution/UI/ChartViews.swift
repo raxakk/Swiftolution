@@ -12,7 +12,7 @@ struct ChartsPanel: View {
                 PopulationChart(snapshots: tracker.snapshots)
             }
             Divider()
-            ChartBox(title: "Merkmale (Ø)") {
+            ChartBox(title: "Traits (avg.)") {
                 TraitsChart(snapshots: tracker.snapshots)
             }
         }
@@ -29,12 +29,21 @@ struct PopulationChart: View {
         let tick: Int; let count: Int; let series: String
     }
 
+    // The series label is both the plotted category and the legend text, so it is localized
+    // once here and reused as the key of the color scale below.
+    private enum Series {
+        static let herbivores = String(localized: "Herbivores")
+        static let omnivores  = String(localized: "Omnivores")
+        static let carnivores = String(localized: "Carnivores")
+        static let plants     = String(localized: "Plants")
+    }
+
     private var points: [Point] {
         snapshots.flatMap { s in [
-            Point(id: "\(s.tick)-H", tick: s.tick, count: s.herbivores, series: "Herbivore"),
-            Point(id: "\(s.tick)-O", tick: s.tick, count: s.omnivores,  series: "Omnivore"),
-            Point(id: "\(s.tick)-C", tick: s.tick, count: s.carnivores, series: "Carnivore"),
-            Point(id: "\(s.tick)-F", tick: s.tick, count: s.plantFood,  series: "Pflanzen"),
+            Point(id: "\(s.tick)-H", tick: s.tick, count: s.herbivores, series: Series.herbivores),
+            Point(id: "\(s.tick)-O", tick: s.tick, count: s.omnivores,  series: Series.omnivores),
+            Point(id: "\(s.tick)-C", tick: s.tick, count: s.carnivores, series: Series.carnivores),
+            Point(id: "\(s.tick)-F", tick: s.tick, count: s.plantFood,  series: Series.plants),
         ]}
     }
 
@@ -45,17 +54,17 @@ struct PopulationChart: View {
             Chart(points) { p in
                 LineMark(
                     x: .value("Tick", p.tick),
-                    y: .value("Anzahl", p.count),
-                    series: .value("Art", p.series)
+                    y: .value("Count", p.count),
+                    series: .value("Group", p.series)
                 )
-                .foregroundStyle(by: .value("Art", p.series))
+                .foregroundStyle(by: .value("Group", p.series))
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .chartForegroundStyleScale([
-                "Herbivore": Color.green,
-                "Omnivore":  Color.orange,
-                "Carnivore": Color.red,
-                "Pflanzen":  Color.teal,
+                Series.herbivores: Color.green,
+                Series.omnivores:  Color.orange,
+                Series.carnivores: Color.red,
+                Series.plants:     Color.teal,
             ])
             .chartXAxis(.hidden)
             .chartLegend(position: .overlay, alignment: .topLeading, spacing: 4)
@@ -63,7 +72,7 @@ struct PopulationChart: View {
     }
 
     private var emptyState: some View {
-        Text("Noch keine Daten").font(.caption).foregroundStyle(.secondary)
+        Text("No data yet").font(.caption).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -78,40 +87,50 @@ struct TraitsChart: View {
         let tick: Int; let value: Double; let trait: String
     }
 
+    private enum Trait {
+        static let aggression = String(localized: "Aggression")
+        static let speed      = String(localized: "Speed")
+        static let size       = String(localized: "Size")
+        static let brain      = String(localized: "Brain")
+        static let longevity  = String(localized: "Longevity")
+        static let litterSize = String(localized: "Litter size")
+        static let energy     = String(localized: "Avg. energy")
+    }
+
     private var points: [Point] {
         snapshots.flatMap { s in [
-            Point(id: "\(s.tick)-A", tick: s.tick, value: s.avgAggression, trait: "Aggression"),
-            Point(id: "\(s.tick)-S", tick: s.tick, value: s.avgSpeed,      trait: "Tempo"),
-            Point(id: "\(s.tick)-Z", tick: s.tick, value: s.avgSize,       trait: "Größe"),
-            Point(id: "\(s.tick)-B", tick: s.tick, value: s.avgBrainSize,  trait: "Gehirn"),
-            Point(id: "\(s.tick)-M", tick: s.tick, value: s.avgMaxAge,     trait: "Langlebigkeit"),
-            Point(id: "\(s.tick)-L", tick: s.tick, value: s.avgLitterSize, trait: "Wurfgröße"),
-            Point(id: "\(s.tick)-E", tick: s.tick, value: s.avgEnergy,     trait: "Ø Energie"),
+            Point(id: "\(s.tick)-A", tick: s.tick, value: s.avgAggression, trait: Trait.aggression),
+            Point(id: "\(s.tick)-S", tick: s.tick, value: s.avgSpeed,      trait: Trait.speed),
+            Point(id: "\(s.tick)-Z", tick: s.tick, value: s.avgSize,       trait: Trait.size),
+            Point(id: "\(s.tick)-B", tick: s.tick, value: s.avgBrainSize,  trait: Trait.brain),
+            Point(id: "\(s.tick)-M", tick: s.tick, value: s.avgMaxAge,     trait: Trait.longevity),
+            Point(id: "\(s.tick)-L", tick: s.tick, value: s.avgLitterSize, trait: Trait.litterSize),
+            Point(id: "\(s.tick)-E", tick: s.tick, value: s.avgEnergy,     trait: Trait.energy),
         ]}
     }
 
     var body: some View {
         if snapshots.isEmpty {
-            Text("Noch keine Daten").font(.caption).foregroundStyle(.secondary)
+            Text("No data yet").font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Chart(points) { p in
                 LineMark(
                     x: .value("Tick", p.tick),
-                    y: .value("Wert", p.value),
-                    series: .value("Merkmal", p.trait)
+                    y: .value("Value", p.value),
+                    series: .value("Trait", p.trait)
                 )
-                .foregroundStyle(by: .value("Merkmal", p.trait))
+                .foregroundStyle(by: .value("Trait", p.trait))
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .chartForegroundStyleScale([
-                "Aggression":    Color.red,
-                "Tempo":         Color.blue,
-                "Größe":         Color.orange,
-                "Gehirn":        Color.indigo,
-                "Langlebigkeit": Color.mint,
-                "Wurfgröße":     Color.yellow,
-                "Ø Energie":     Color.cyan,
+                Trait.aggression: Color.red,
+                Trait.speed:      Color.blue,
+                Trait.size:       Color.orange,
+                Trait.brain:      Color.indigo,
+                Trait.longevity:  Color.mint,
+                Trait.litterSize: Color.yellow,
+                Trait.energy:     Color.cyan,
             ])
             .chartYScale(domain: 0...1)
             .chartXAxis(.hidden)
@@ -123,7 +142,7 @@ struct TraitsChart: View {
 // MARK: - Helper view
 
 private struct ChartBox<Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     @ViewBuilder let content: () -> Content
 
     var body: some View {

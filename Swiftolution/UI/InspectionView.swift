@@ -7,34 +7,35 @@ struct InspectionView: View {
         VStack(alignment: .leading, spacing: 8) {
 
             // Diet badge
-            Text(snapshot.isHerbivore ? "Pflanzenfresser" : "Fleischfresser")
+            Text(snapshot.isHerbivore ? "Herbivore" : "Carnivore")
                 .font(.caption.bold())
                 .foregroundStyle(snapshot.isHerbivore ? Color.green : Color.red)
 
             // The current biome (only when biomes are on)
             if let biome = snapshot.biomeName {
                 HStack {
-                    Text("Biom").font(.caption2).foregroundStyle(.secondary)
+                    Text("Biome").font(.caption2).foregroundStyle(.secondary)
                     Spacer()
-                    Text(biome).font(.caption2.bold())
+                    // The engine reports biomes as stable English identifiers.
+                    Text(LocalizedStringKey(biome)).font(.caption2.bold())
                 }
             }
 
             // State
-            TraitBar(label: "Energie",
+            TraitBar(label: "Energy",
                      value: snapshot.energyRatio,
                      color: energyColor(snapshot.energyRatio))
-            TraitBar(label: "Körpermasse",
+            TraitBar(label: "Body mass",
                      value: snapshot.bodyMassRatio,
                      color: .brown)
             HStack {
-                Text("Alter").font(.caption2).foregroundStyle(.secondary)
+                Text("Age").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Text("\(snapshot.age) / \(snapshot.maxAge)")
                     .font(.caption2.monospacedDigit())
             }
             if snapshot.senescence > 0 {
-                TraitBar(label: "Seneszenz",
+                TraitBar(label: "Senescence",
                          value: snapshot.senescence,
                          color: .gray,
                          displayOverride: String(format: "%.0f%%", snapshot.senescence * 100))
@@ -48,38 +49,38 @@ struct InspectionView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            TraitBar(label: "Größe",             value: snapshot.size,          color: .orange)
-            TraitBar(label: "Tempo",             value: snapshot.speed,         color: .blue)
+            TraitBar(label: "Size",              value: snapshot.size,          color: .orange)
+            TraitBar(label: "Speed",             value: snapshot.speed,         color: .blue)
             TraitBar(label: "Aggression",        value: snapshot.aggression,    color: .red)
-            TraitBar(label: "Sichtweite",        value: snapshot.sightRadiusGene, color: .purple,
+            TraitBar(label: "Sight range",       value: snapshot.sightRadiusGene, color: .purple,
                      displayOverride: String(format: "%.0f px", snapshot.sightRadiusPx))
-            TraitBar(label: "Sichtwinkel",       value: snapshot.sightAngleGene,  color: .purple,
+            TraitBar(label: "Sight angle",       value: snapshot.sightAngleGene,  color: .purple,
                      displayOverride: "\(snapshot.sightAngleDeg)°")
-            TraitBar(label: "Wendigkeit",        value: snapshot.turnRateGene,    color: .cyan,
-                     displayOverride: String(format: "%.1f°/Tick", snapshot.turnRateDeg))
-            TraitBar(label: "Lebenserwartung",   value: snapshot.maxAgeGene,    color: .mint,
-                     displayOverride: "\(snapshot.maxAge) Ticks")
-            TraitBar(label: "Fortpfl.-Schwelle", value: snapshot.reproThreshold, color: .teal)
-            TraitBar(label: "Wurfgröße",         value: Float(snapshot.litterSize - 1) / 3.0, color: .yellow,
+            TraitBar(label: "Agility",           value: snapshot.turnRateGene,    color: .cyan,
+                     displayOverride: String(format: String(localized: "%.1f deg/tick"), snapshot.turnRateDeg))
+            TraitBar(label: "Life expectancy",   value: snapshot.maxAgeGene,    color: .mint,
+                     displayOverride: String(localized: "\(snapshot.maxAge) ticks"))
+            TraitBar(label: "Repro. threshold",  value: snapshot.reproThreshold, color: .teal)
+            TraitBar(label: "Litter size",       value: Float(snapshot.litterSize - 1) / 3.0, color: .yellow,
                      displayOverride: "\(snapshot.litterSize)")
-            TraitBar(label: "Gehirn",            value: snapshot.brainSize,     color: .indigo,
-                     displayOverride: "\(snapshot.hiddenCount) Neuronen")
-            TraitBar(label: "Olfaktion",          value: snapshot.olfaction,     color: .green,
+            TraitBar(label: "Brain",             value: snapshot.brainSize,     color: .indigo,
+                     displayOverride: String(localized: "\(snapshot.hiddenCount) neurons"))
+            TraitBar(label: "Olfaction",         value: snapshot.olfaction,     color: .green,
                      displayOverride: String(format: "%.0f px", snapshot.olfaction * 170 + 30))
 
             Divider()
 
             // Current behaviour
-            Text("Verhalten (aktuell)")
+            Text("Behaviour (current)")
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            TraitBar(label: "Geschwindigkeit", value: snapshot.actionSpeed,      color: .cyan)
-            TraitBar(label: "Fortpflanzung",   value: snapshot.actionReproduce,  color: .teal)
-            TraitBar(label: "Angriffsdrang",   value: snapshot.actionAttack,     color: .red)
-            TraitBar(label: "Frisst Pflanzen", value: snapshot.actionEatPlant,   color: .green)
-            TraitBar(label: "Frisst Aas",      value: snapshot.actionEatCorpse,  color: .orange)
+            TraitBar(label: "Current speed",   value: snapshot.actionSpeed,      color: .cyan)
+            TraitBar(label: "Reproduction",    value: snapshot.actionReproduce,  color: .teal)
+            TraitBar(label: "Urge to attack",  value: snapshot.actionAttack,     color: .red)
+            TraitBar(label: "Eats plants",     value: snapshot.actionEatPlant,   color: .green)
+            TraitBar(label: "Eats carrion",    value: snapshot.actionEatCorpse,  color: .orange)
         }
     }
 
@@ -91,7 +92,7 @@ struct InspectionView: View {
 // MARK: - Helper view
 
 private struct TraitBar: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: Float
     let color: Color
     var displayOverride: String? = nil

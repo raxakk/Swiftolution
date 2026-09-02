@@ -100,14 +100,15 @@ final class World {
              + Double(seasonAmplitude) * 0.5 * (1.0 + cos(2.0 * .pi * t))
     }
 
+    // Stable English identifiers, localized by the UI for display (see Biome.name).
     var currentSeasonName: String {
-        guard seasonEnabled, seasonLength > 0 else { return "–" }
+        guard seasonEnabled, seasonLength > 0 else { return "-" }
         let t = Double(tickCount % seasonLength) / Double(seasonLength)
         switch t {
-        case 0..<0.25:  return "Sommer"
-        case 0.25..<0.5: return "Herbst"
+        case 0..<0.25:   return "Summer"
+        case 0.25..<0.5: return "Autumn"
         case 0.5..<0.75: return "Winter"
-        default:         return "Frühling"
+        default:         return "Spring"
         }
     }
 

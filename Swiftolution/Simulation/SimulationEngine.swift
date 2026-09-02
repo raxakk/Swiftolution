@@ -315,7 +315,7 @@ struct SimulationStats {
     var oldestAge:     Int    = 0
     var averageAge:    Double = 0
     var averageEnergy: Double = 0
-    var currentSeason: String = "–"
+    var currentSeason: String = "-"
     var seasonFactor:  Double = 1.0
     var speciesCount:  Int    = 0   // distinct species (0 = speciation is off)
 }

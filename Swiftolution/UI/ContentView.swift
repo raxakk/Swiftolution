@@ -48,6 +48,11 @@ struct SidebarView: View {
     @ObservedObject var engine: SimulationEngine
     @State private var speedMultiplier: Double = 1.0
 
+    // The engine reports seasons as stable English identifiers; look them up for display.
+    private var localizedSeason: String {
+        String(localized: String.LocalizationValue(engine.stats.currentSeason))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -58,62 +63,62 @@ struct SidebarView: View {
 
                 // MARK: Creature inspector
                 if let snapshot = engine.inspectedCreature {
-                    SidebarSection(title: "Ausgewählte Kreatur") {
+                    SidebarSection(title: "Selected creature") {
                         InspectionView(snapshot: snapshot)
                     }
                 }
 
                 // MARK: Statistics
-                SidebarSection(title: "Statistiken") {
+                SidebarSection(title: "Statistics") {
                     StatRow(label: "Tick",          value: "\(engine.stats.tickCount)")
                     StatRow(label: "Generation",    value: "\(engine.stats.generation)")
                     StatRow(label: "Population",    value: "\(engine.stats.population)")
 
-                    StatRow(label: "Herbivore",     value: "\(engine.stats.herbivores)",
+                    StatRow(label: "Herbivores",    value: "\(engine.stats.herbivores)",
                             color: .green)
-                    StatRow(label: "Omnivore",      value: "\(engine.stats.omnivores)",
+                    StatRow(label: "Omnivores",     value: "\(engine.stats.omnivores)",
                             color: .orange)
-                    StatRow(label: "Carnivore",     value: "\(engine.stats.carnivores)",
+                    StatRow(label: "Carnivores",    value: "\(engine.stats.carnivores)",
                             color: .red)
-                    StatRow(label: "Ø Aggression",  value: String(format: "%.2f", engine.stats.avgAggression))
+                    StatRow(label: "Avg. aggression", value: String(format: "%.2f", engine.stats.avgAggression))
 
                     if engine.config.speciationEnabled {
-                        StatRow(label: "Arten",     value: "\(engine.stats.speciesCount)",
+                        StatRow(label: "Species",   value: "\(engine.stats.speciesCount)",
                                 color: .cyan)
                     }
 
-                    StatRow(label: "Geburten",      value: "\(engine.stats.totalBirths)")
-                    StatRow(label: "Tode",          value: "\(engine.stats.totalDeaths)")
+                    StatRow(label: "Births",        value: "\(engine.stats.totalBirths)")
+                    StatRow(label: "Deaths",        value: "\(engine.stats.totalDeaths)")
 
-                    StatRow(label: "Pflanzen",      value: "\(engine.stats.plantCount) / \(engine.stats.maxFood)")
-                    StatRow(label: "Leichen",       value: "\(engine.stats.corpseCount)")
+                    StatRow(label: "Plants",        value: "\(engine.stats.plantCount) / \(engine.stats.maxFood)")
+                    StatRow(label: "Corpses",       value: "\(engine.stats.corpseCount)")
 
-                    StatRow(label: "Ø Alter",       value: String(format: "%.0f Ticks", engine.stats.averageAge))
-                    StatRow(label: "Ältestes",      value: "\(engine.stats.oldestAge) Ticks")
-                    StatRow(label: "Ø Energie",     value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
+                    StatRow(label: "Avg. age",      value: String(localized: "\(Int(engine.stats.averageAge)) ticks"))
+                    StatRow(label: "Oldest",        value: String(localized: "\(engine.stats.oldestAge) ticks"))
+                    StatRow(label: "Avg. energy",   value: String(format: "%.0f%%", engine.stats.averageEnergy * 100))
 
                     if engine.config.seasonEnabled {
-                        StatRow(label: "Jahreszeit",
-                                value: "\(engine.stats.currentSeason) (\(Int(engine.stats.seasonFactor * 100))%)")
+                        StatRow(label: "Season",
+                                value: "\(localizedSeason) (\(Int(engine.stats.seasonFactor * 100))%)")
                     }
                 }
 
                 // MARK: Controls
-                SidebarSection(title: "Steuerung") {
-                    Button(engine.isPaused ? "Fortsetzen" : "Pause") {
+                SidebarSection(title: "Controls") {
+                    Button(engine.isPaused ? "Resume" : "Pause") {
                         engine.togglePause()
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
 
-                    Button("Neustart") {
+                    Button("Restart") {
                         engine.restart()
                     }
                     .frame(maxWidth: .infinity)
 
                     ParamSlider(
-                        label: "Geschwindigkeit",
-                        displayValue: String(format: "%.1f×", speedMultiplier),
+                        label: "Simulation speed",
+                        displayValue: String(format: "%.1fx", speedMultiplier),
                         value: $speedMultiplier,
                         range: 0.1...10.0
                     )
@@ -121,7 +126,7 @@ struct SidebarView: View {
                 }
 
                 // MARK: Environment (takes effect immediately)
-                SidebarSection(title: "Umgebung") {
+                SidebarSection(title: "Environment") {
                     // Ceiling of 3000: capacity is a reference value for an 800x600 world,
                     // scaled by sqrt(area). The largest world (4800x3600) has 36 times the
                     // reference area but only gets a factor of 6, so its density would fall to
@@ -129,7 +134,7 @@ struct SidebarView: View {
                     // 1500, which is what carries the bootstrap phase (starting at maximum
                     // food) in large worlds too.
                     ParamSlider(
-                        label: "Nahrungskapazität",
+                        label: "Food capacity",
                         displayValue: "\(engine.config.foodCapacity)",
                         value: Binding(
                             get: { Double(engine.config.foodCapacity) },
@@ -139,7 +144,7 @@ struct SidebarView: View {
                     )
 
                     ParamSlider(
-                        label: "Nahrungswachstum",
+                        label: "Food growth",
                         displayValue: String(format: "%.2f", engine.config.foodGrowthRate),
                         value: Binding(
                             get: { engine.config.foodGrowthRate },
@@ -148,7 +153,7 @@ struct SidebarView: View {
                         range: 0.005...0.15
                     )
 
-                    Toggle("Jahreszeiten", isOn: Binding(
+                    Toggle("Seasons", isOn: Binding(
                         get: { engine.config.seasonEnabled },
                         set: { engine.config.seasonEnabled = $0 }
                     ))
@@ -157,8 +162,8 @@ struct SidebarView: View {
 
                     if engine.config.seasonEnabled {
                         ParamSlider(
-                            label: "Jahreslänge",
-                            displayValue: "\(engine.config.seasonLength) Ticks",
+                            label: "Year length",
+                            displayValue: String(localized: "\(engine.config.seasonLength) ticks"),
                             value: Binding(
                                 get: { Double(engine.config.seasonLength) },
                                 set: { engine.config.seasonLength = Int($0) }
@@ -166,7 +171,7 @@ struct SidebarView: View {
                             range: 500...10000
                         )
                         ParamSlider(
-                            label: "Saisonalität",
+                            label: "Seasonality",
                             displayValue: String(format: "%.0f%%", Double(engine.config.seasonAmplitude) * 100),
                             value: Binding(
                                 get: { Double(engine.config.seasonAmplitude) },
@@ -176,7 +181,7 @@ struct SidebarView: View {
                         )
                     }
 
-                    Toggle("Mindest-Spawn", isOn: Binding(
+                    Toggle("Minimum spawn", isOn: Binding(
                         get: { engine.config.minSpawnEnabled },
                         set: { engine.config.minSpawnEnabled = $0 }
                     ))
@@ -185,8 +190,8 @@ struct SidebarView: View {
 
                     if engine.config.minSpawnEnabled {
                         ParamSlider(
-                            label: "Schwellenwert",
-                            displayValue: "\(engine.config.minSpawnThreshold) Kreaturen",
+                            label: "Threshold",
+                            displayValue: String(localized: "\(engine.config.minSpawnThreshold) creatures"),
                             value: Binding(
                                 get: { Double(engine.config.minSpawnThreshold) },
                                 set: { engine.config.minSpawnThreshold = Int($0) }
@@ -199,7 +204,7 @@ struct SidebarView: View {
                     // fertility distribution, and biomes are the superset that takes precedence.
                     // With biomes on the gradient would do nothing, so it is hidden.
                     if !engine.config.biomesEnabled {
-                        Toggle("Äquator-Gradient", isOn: Binding(
+                        Toggle("Equator gradient", isOn: Binding(
                             get: { engine.config.latitudeGradientEnabled },
                             set: { engine.config.latitudeGradientEnabled = $0 }
                         ))
@@ -211,7 +216,7 @@ struct SidebarView: View {
                 // MARK: Evolution (takes effect immediately)
                 SidebarSection(title: "Evolution") {
                     ParamSlider(
-                        label: "Mutationsrate",
+                        label: "Mutation rate",
                         displayValue: String(format: "%.2f", engine.config.mutationRate),
                         value: Binding(
                             get: { Double(engine.config.mutationRate) },
@@ -221,7 +226,7 @@ struct SidebarView: View {
                     )
 
                     ParamSlider(
-                        label: "Mutationsstärke",
+                        label: "Mutation strength",
                         displayValue: String(format: "%.2f", engine.config.mutationStrength),
                         value: Binding(
                             get: { Double(engine.config.mutationStrength) },
@@ -230,7 +235,7 @@ struct SidebarView: View {
                         range: 0.01...0.50
                     )
 
-                    Toggle("Artbildung", isOn: Binding(
+                    Toggle("Speciation", isOn: Binding(
                         get: { engine.config.speciationEnabled },
                         set: { engine.config.speciationEnabled = $0 }
                     ))
@@ -239,7 +244,7 @@ struct SidebarView: View {
 
                     if engine.config.speciationEnabled {
                         ParamSlider(
-                            label: "Paarungsschwelle",
+                            label: "Mating threshold",
                             displayValue: String(format: "%.2f", engine.config.speciationThreshold),
                             value: Binding(
                                 get: { Double(engine.config.speciationThreshold) },
@@ -249,7 +254,7 @@ struct SidebarView: View {
                         )
                     }
 
-                    Toggle("Pflanzengift", isOn: Binding(
+                    Toggle("Plant toxin", isOn: Binding(
                         get: { engine.config.plantToxinEnabled },
                         set: { engine.config.plantToxinEnabled = $0 }
                     ))
@@ -258,7 +263,7 @@ struct SidebarView: View {
 
                     if engine.config.plantToxinEnabled {
                         ParamSlider(
-                            label: "Giftstärke",
+                            label: "Toxin strength",
                             displayValue: String(format: "%.2f", engine.config.plantToxinFactor),
                             value: Binding(
                                 get: { Double(engine.config.plantToxinFactor) },
@@ -267,7 +272,7 @@ struct SidebarView: View {
                             range: 0.00...1.50
                         )
                         ParamSlider(
-                            label: "Giftschwelle (aggr)",
+                            label: "Toxin threshold (aggr)",
                             displayValue: String(format: "%.2f", engine.config.plantToxinThreshold),
                             value: Binding(
                                 get: { Double(engine.config.plantToxinThreshold) },
@@ -279,9 +284,9 @@ struct SidebarView: View {
                 }
 
                 // MARK: Starting conditions (applied on restart)
-                SidebarSection(title: "Start (nach Neustart)") {
+                SidebarSection(title: "Start (after restart)") {
                     ParamSlider(
-                        label: "Weltbreite",
+                        label: "World width",
                         displayValue: "\(engine.config.worldWidth) px",
                         value: Binding(
                             get: { Double(engine.config.worldWidth) },
@@ -290,7 +295,7 @@ struct SidebarView: View {
                         range: 600...4800
                     )
                     ParamSlider(
-                        label: "Welthöhe",
+                        label: "World height",
                         displayValue: "\(engine.config.worldHeight) px",
                         value: Binding(
                             get: { Double(engine.config.worldHeight) },
@@ -299,7 +304,7 @@ struct SidebarView: View {
                         range: 400...3600
                     )
                     ParamSlider(
-                        label: "Startpopulation",
+                        label: "Starting population",
                         displayValue: "\(engine.config.initialCreatures)",
                         value: Binding(
                             get: { Double(engine.config.initialCreatures) },
@@ -308,13 +313,13 @@ struct SidebarView: View {
                         range: 10...1000
                     )
 
-                    Toggle("Biome & Terrain", isOn: Binding(
+                    Toggle("Biomes & terrain", isOn: Binding(
                         get: { engine.config.biomesEnabled },
                         set: { engine.config.biomesEnabled = $0 }
                     ))
                     .font(.caption)
                     .toggleStyle(.switch)
-                    Text("Wiese, Wald, Wüste, Sumpf und Wasserbarrieren. Neustart nötig.")
+                    Text("Grassland, forest, desert, wetland and water barriers. Requires a restart.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -329,7 +334,7 @@ struct SidebarView: View {
 // MARK: - Helper views
 
 private struct SidebarSection<Content: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -347,7 +352,7 @@ private struct SidebarSection<Content: View>: View {
 }
 
 private struct ParamSlider: View {
-    let label: String
+    let label: LocalizedStringKey
     let displayValue: String
     let value: Binding<Double>
     let range: ClosedRange<Double>
@@ -365,7 +370,7 @@ private struct ParamSlider: View {
 }
 
 private struct StatRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
     var color: Color = .primary
 

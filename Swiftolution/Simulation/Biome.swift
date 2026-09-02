@@ -16,13 +16,15 @@ enum Biome: Int, CaseIterable {
     case wetland     // very fertile, but slow to traverse
     case water       // no food, impassable (a barrier)
 
+    // A stable English identifier. The UI looks it up in the string catalog for display; the
+    // headless runner prints it as is.
     var name: String {
         switch self {
-        case .grassland: return "Wiese"
-        case .forest:    return "Wald"
-        case .desert:    return "Wüste"
-        case .wetland:   return "Sumpf"
-        case .water:     return "Wasser"
+        case .grassland: return "Grassland"
+        case .forest:    return "Forest"
+        case .desert:    return "Desert"
+        case .wetland:   return "Wetland"
+        case .water:     return "Water"
         }
     }
 

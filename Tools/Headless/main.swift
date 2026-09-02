@@ -45,41 +45,42 @@ struct Options {
 
 func printUsage() {
     print("""
-    swiftolution-headless — Simulation ohne UI
+    swiftolution-headless — the simulation without a UI
 
-    Verwendung: run.sh [Optionen]
+    Usage: run.sh [options]
 
-      --ticks N            Anzahl Simulationsschritte (Default 5000)
-      --interval N         Statistik alle N Ticks ausgeben (Default 500)
-      --width N            Weltbreite in px (Default 2400)
-      --height N           Welthöhe in px (Default 1800)
-      --creatures N        Startpopulation (Default 80)
-      --food-capacity N    Nahrungskapazität, √-skaliert (Default 500)
-      --growth F           Nahrungswachstumsrate (Default 0.05)
-      --mutation F         Mutationsrate (Default 0.05)
-      --mutation-strength F Mutationsstärke (Default 0.10)
-      --min-spawn N        Mindest-Spawn: reseedet unter N Kreaturen (Default aus)
-      --reduce-food-at T C Bei Tick T die Nahrungskapazität auf C setzen (mehrfach möglich →
-                           stufenweise Absenkung; deine Methode: erst max bootstrappen, dann senken)
-      --biomes             Biome & Terrain aktivieren
-      --seasons            Jahreszeiten aktivieren
-      --no-speciation      Assortative Paarung / Artbildung aus
-      --no-plant-toxin     Pflanzengift aus
+      --ticks N            number of simulation steps (default 5000)
+      --interval N         print statistics every N ticks (default 500)
+      --width N            world width in px (default 2400)
+      --height N           world height in px (default 1800)
+      --creatures N        starting population (default 80)
+      --food-capacity N    food capacity, sqrt-scaled (default 500)
+      --growth F           food growth rate (default 0.05)
+      --mutation F         mutation rate (default 0.05)
+      --mutation-strength F mutation strength (default 0.10)
+      --min-spawn N        minimum spawn: reseeds below N creatures (default off)
+      --reduce-food-at T C set the food capacity to C at tick T (repeatable for a stepwise
+                           reduction; the intended workflow is to bootstrap at maximum food
+                           and only then reduce it)
+      --biomes             enable biomes & terrain
+      --seasons            enable seasons
+      --no-speciation      disable assortative mating / speciation
+      --no-plant-toxin     disable the plant toxin
 
-    Beobachtung (reichere Einsicht):
-      --detail             ASCII-Weltkarte + Merkmals-Histogramme + Beispielindividuen
-      --json               strukturierte JSON-Lines-Snapshots (ein Objekt je Intervall)
-      --events             Live-Ereignisstrom: Geburt/Tod je Tick als NDJSON (Tod inkl. Ursache)
-      --trace              Verhaltens-Trace: pro Tick Wahrnehmung → Entscheidung einzelner Kreaturen
-      --trace-from T       Trace-Fenster ab Tick T (Default 0)
-      --trace-to T         Trace-Fenster bis Tick T (Default: traceFrom + 200)
-      --trace-every N      nur jeden N-ten Tick tracen (Default 1)
-      --trace-creatures N  Anzahl verfolgter Individuen (Default 3: ältestes, fittestes, zufällig)
-      --trace-weights      rohe NN-Gewichte im Steckbrief mitgeben (518 Zahlen je Kreatur)
-      --samples N          Anzahl Beispielindividuen bei --detail/--json (Default 3)
-      --map-cols N         Breite der ASCII-Weltkarte (Default 60)
-      --csv                Ausgabe als CSV-Tabelle
-      -h, --help           Diese Hilfe
+    Observation (richer insight):
+      --detail             ASCII world map, trait histograms and sample individuals
+      --json               structured JSON-lines snapshots (one object per interval)
+      --events             live event stream: birth/death per tick as NDJSON (deaths with cause)
+      --trace              behaviour trace: perception -> decision of single creatures, per tick
+      --trace-from T       trace window from tick T (default 0)
+      --trace-to T         trace window up to tick T (default: traceFrom + 200)
+      --trace-every N      trace only every Nth tick (default 1)
+      --trace-creatures N  how many individuals to follow (default 3: oldest, fittest, random)
+      --trace-weights      include the raw network weights in the profile (518 numbers per creature)
+      --samples N          sample individuals shown by --detail/--json (default 3)
+      --map-cols N         width of the ASCII world map (default 60)
+      --csv                emit a CSV table
+      -h, --help           show this help
     """)
 }
 
@@ -94,38 +95,38 @@ func parseArgs() -> Options {
     while i < args.count {
         let a = args[i]
         switch a {
-        case "--ticks":            if let v = value(), let n = Int(v)    { o.ticks = n; i += 1 }            else { fail("--ticks braucht eine Zahl") }
-        case "--interval":         if let v = value(), let n = Int(v)    { o.interval = max(1, n); i += 1 } else { fail("--interval braucht eine Zahl") }
-        case "--width":            if let v = value(), let n = Int(v)    { o.width = n; i += 1 }            else { fail("--width braucht eine Zahl") }
-        case "--height":           if let v = value(), let n = Int(v)    { o.height = n; i += 1 }           else { fail("--height braucht eine Zahl") }
-        case "--creatures":        if let v = value(), let n = Int(v)    { o.creatures = n; i += 1 }        else { fail("--creatures braucht eine Zahl") }
-        case "--food-capacity":    if let v = value(), let n = Int(v)    { o.foodCapacity = n; i += 1 }     else { fail("--food-capacity braucht eine Zahl") }
-        case "--growth":           if let v = value(), let n = Double(v) { o.foodGrowthRate = n; i += 1 }   else { fail("--growth braucht eine Zahl") }
-        case "--mutation":         if let v = value(), let n = Float(v)  { o.mutationRate = n; i += 1 }     else { fail("--mutation braucht eine Zahl") }
-        case "--mutation-strength": if let v = value(), let n = Float(v) { o.mutationStrength = n; i += 1 } else { fail("--mutation-strength braucht eine Zahl") }
-        case "--min-spawn":        if let v = value(), let n = Int(v)    { o.minSpawn = n; i += 1 }         else { fail("--min-spawn braucht eine Zahl") }
+        case "--ticks":            if let v = value(), let n = Int(v)    { o.ticks = n; i += 1 }            else { fail("--ticks needs a number") }
+        case "--interval":         if let v = value(), let n = Int(v)    { o.interval = max(1, n); i += 1 } else { fail("--interval needs a number") }
+        case "--width":            if let v = value(), let n = Int(v)    { o.width = n; i += 1 }            else { fail("--width needs a number") }
+        case "--height":           if let v = value(), let n = Int(v)    { o.height = n; i += 1 }           else { fail("--height needs a number") }
+        case "--creatures":        if let v = value(), let n = Int(v)    { o.creatures = n; i += 1 }        else { fail("--creatures needs a number") }
+        case "--food-capacity":    if let v = value(), let n = Int(v)    { o.foodCapacity = n; i += 1 }     else { fail("--food-capacity needs a number") }
+        case "--growth":           if let v = value(), let n = Double(v) { o.foodGrowthRate = n; i += 1 }   else { fail("--growth needs a number") }
+        case "--mutation":         if let v = value(), let n = Float(v)  { o.mutationRate = n; i += 1 }     else { fail("--mutation needs a number") }
+        case "--mutation-strength": if let v = value(), let n = Float(v) { o.mutationStrength = n; i += 1 } else { fail("--mutation-strength needs a number") }
+        case "--min-spawn":        if let v = value(), let n = Int(v)    { o.minSpawn = n; i += 1 }         else { fail("--min-spawn needs a number") }
         case "--reduce-food-at":
             if i + 2 < args.count, let t = Int(args[i + 1]), let cap = Int(args[i + 2]) {
                 o.foodSteps.append((t, cap)); i += 2
-            } else { fail("--reduce-food-at braucht TICK und KAPAZITÄT") }
-        case "--samples":          if let v = value(), let n = Int(v)    { o.samples = max(0, n); i += 1 }  else { fail("--samples braucht eine Zahl") }
-        case "--map-cols":         if let v = value(), let n = Int(v)    { o.mapCols = max(10, n); i += 1 } else { fail("--map-cols braucht eine Zahl") }
+            } else { fail("--reduce-food-at needs TICK and CAPACITY") }
+        case "--samples":          if let v = value(), let n = Int(v)    { o.samples = max(0, n); i += 1 }  else { fail("--samples needs a number") }
+        case "--map-cols":         if let v = value(), let n = Int(v)    { o.mapCols = max(10, n); i += 1 } else { fail("--map-cols needs a number") }
         case "--biomes":           o.biomes = true
         case "--seasons":          o.seasons = true
         case "--no-speciation":    o.speciation = false
         case "--no-plant-toxin":   o.plantToxin = false
         case "--csv":              o.csv = true
-        case "--trace-from":       if let v = value(), let n = Int(v) { o.traceFrom = n; i += 1 }              else { fail("--trace-from braucht eine Zahl") }
-        case "--trace-to":         if let v = value(), let n = Int(v) { o.traceTo = n; i += 1 }                else { fail("--trace-to braucht eine Zahl") }
-        case "--trace-every":      if let v = value(), let n = Int(v) { o.traceEvery = max(1, n); i += 1 }     else { fail("--trace-every braucht eine Zahl") }
-        case "--trace-creatures":  if let v = value(), let n = Int(v) { o.traceCreatures = max(1, n); i += 1 } else { fail("--trace-creatures braucht eine Zahl") }
+        case "--trace-from":       if let v = value(), let n = Int(v) { o.traceFrom = n; i += 1 }              else { fail("--trace-from needs a number") }
+        case "--trace-to":         if let v = value(), let n = Int(v) { o.traceTo = n; i += 1 }                else { fail("--trace-to needs a number") }
+        case "--trace-every":      if let v = value(), let n = Int(v) { o.traceEvery = max(1, n); i += 1 }     else { fail("--trace-every needs a number") }
+        case "--trace-creatures":  if let v = value(), let n = Int(v) { o.traceCreatures = max(1, n); i += 1 } else { fail("--trace-creatures needs a number") }
         case "--trace":            o.trace = true
         case "--trace-weights":    o.traceWeights = true
         case "--detail":           o.detail = true
         case "--json":             o.json = true
         case "--events":           o.events = true
         case "-h", "--help":       printUsage(); exit(0)
-        default:                   fail("Unbekanntes Argument: \(a)  (--help für Hilfe)")
+        default:                   fail("Unknown argument: \(a)  (--help for usage)")
         }
         i += 1
     }
@@ -300,10 +301,10 @@ func pad(_ s: String, _ w: Int) -> String {
 
 let humanHeader = [
     pad("tick", 7), pad("gen", 5), pad("pop", 5),
-    pad("herb", 5), pad("omni", 5), pad("carn", 5), pad("arten", 6),
-    pad("pflanzen", 9), pad("aas", 4), pad("+geb", 5), pad("-tod", 5),
+    pad("herb", 5), pad("omni", 5), pad("carn", 5), pad("spec", 6),
+    pad("plants", 9), pad("corp", 5), pad("+brt", 5), pad("-dth", 5),
     pad("aggr", 5), pad("size", 5), pad("spd", 5),
-    pad("ø-alt", 6), pad("ø-nrg", 6), pad("max-alt", 7)
+    pad("avgAge", 7), pad("avgNrg", 7), pad("maxAge", 7)
 ].joined(separator: " ")
 
 func humanRow(_ s: SnapshotJSON) -> String {
@@ -332,29 +333,29 @@ func renderHistogram(_ name: String, _ bins: [Int], width: Int = 32) -> String {
 func renderSample(_ s: SampleJSON) -> String {
     let biome = s.biome.map { " [\($0)]" } ?? ""
     return String(format:
-        "    (%4d,%4d)%@ Alter %d/%d  E %.0f%%  | size %.2f spd %.2f aggr %.2f sight %.2f olf %.2f litter %d brain %d\n" +
-        "        Verhalten: spd %.2f repro %.2f attack %.2f eatPlant %.2f eatCorpse %.2f",
+        "    (%4d,%4d)%@ age %d/%d  E %.0f%%  | size %.2f spd %.2f aggr %.2f sight %.2f olf %.2f litter %d brain %d\n" +
+        "        behaviour: spd %.2f repro %.2f attack %.2f eatPlant %.2f eatCorpse %.2f",
         s.x, s.y, biome, s.age, s.maxAge, s.energyPct * 100,
         s.size, s.speed, s.aggression, s.sightRadius, s.olfaction, s.litter, s.brainNeurons,
         s.actSpeed, s.actReproduce, s.actAttack, s.actEatPlant, s.actEatCorpse)
 }
 
 func printDetail(_ s: SnapshotJSON, biomes: Bool) {
-    print("        Tode: Hunger \(s.deathsStarvation)  Prädation \(s.deathsPredation)  Alter \(s.deathsOldAge)   Geburten \(s.birthsInterval)")
+    print("        deaths: starvation \(s.deathsStarvation)  predation \(s.deathsPredation)  old age \(s.deathsOldAge)   births \(s.birthsInterval)")
     if let per = s.perBiome {
         print("        └ " + per.map { "\($0.biome) \($0.count)" }.joined(separator: "  "))
     }
     if let map = s.map {
-        let legend = biomes ? "  (Terrain: . Wiese  f Wald  d Wüste  w Sumpf  ~ Wasser  |  Ziffern = Kreaturen je Zelle, # ≥10)"
-                            : "  (Ziffern = Kreaturen je Zelle, # ≥10)"
-        print("  Weltkarte \(map.first?.count ?? 0)×\(map.count):" + legend)
+        let legend = biomes ? "  (terrain: . grassland  f forest  d desert  w wetland  ~ water  |  digits = creatures per cell, # >= 10)"
+                            : "  (digits = creatures per cell, # >= 10)"
+        print("  world map \(map.first?.count ?? 0)x\(map.count):" + legend)
         for line in map { print("  " + line) }
     }
-    print(renderHistogram("Aggression", s.aggressionHistogram), terminator: "")
-    print(renderHistogram("Größe",      s.sizeHistogram), terminator: "")
-    print(renderHistogram("Tempo",      s.speedHistogram), terminator: "")
+    print(renderHistogram("aggression", s.aggressionHistogram), terminator: "")
+    print(renderHistogram("size",       s.sizeHistogram), terminator: "")
+    print(renderHistogram("speed",      s.speedHistogram), terminator: "")
     if let samples = s.samples, !samples.isEmpty {
-        print("  Beispielindividuen (ältestes, energiereichstes, zufällig):")
+        print("  sample individuals (oldest, most energetic, random):")
         for smp in samples { print(renderSample(smp)) }
     }
     print("")
@@ -369,19 +370,19 @@ func shortID(_ c: Creature) -> String { String(c.id.uuidString.prefix(4)) }
 func printTraceLegend() {
     print("""
     ── TRACE ─────────────────────────────────────────────────────────────────────
-      Zeile 1: t=Tick #id (x,y) h=Heading E=Energieanteil a=Alter [Biom]
-        F(a d T n) nächste Nahrung — a Winkel (−links/+rechts), d Distanz, T P=Pflanze/K=Kadaver, n sichtbare Menge
-        C(a d v n) nächste Kreatur — v Annäherung (+kommt näher/−flieht)
-        dn Dichte | hd Herdenrichtung | sm Pflanzengeruch | fd Fressrate | sn Seneszenz
-        fert/cov/dif Biom am Standort | bear Terrain-Peilung (. Wiese  f Wald  d Wüste  w Sumpf  ~ Wasser)
-      Zeile 2: ⇒ NN-Entscheidung — turn (−links/+rechts) spd rep atk eatP eatC
+      line 1: t=tick #id (x,y) h=heading E=energy fraction a=age [biome]
+        F(a d T n) nearest food — a angle (-left/+right), d distance, T P=plant/C=corpse, n count in sight
+        C(a d v n) nearest creature — v approach (+closing in/-fleeing)
+        dn density | hd herding direction | sm plant smell | fd feeding rate | sn senescence
+        fert/cov/dif biome underfoot | bear terrain bearing (. grassland  f forest  d desert  w wetland  ~ water)
+      line 2: => network decision — turn (-left/+right) spd rep atk eatP eatC
     ──────────────────────────────────────────────────────────────────────────────
     """)
 }
 
 func printTraceProfile(_ c: Creature, _ world: World, _ o: Options) {
     let b = o.biomes ? " [\(world.biome(at: c.position).name)]" : ""
-    print("── Steckbrief #\(shortID(c))\(b)  Alter \(c.age)/\(c.dna.maxAge)  E \(n2(c.energy / c.maxEnergy))")
+    print("── profile #\(shortID(c))\(b)  age \(c.age)/\(c.dna.maxAge)  E \(n2(c.energy / c.maxEnergy))")
     print("   DNA: size \(n2(c.dna.size))  speed \(n2(c.dna.speed))  aggr \(n2(c.dna.aggression))"
         + "  sight \(n2(c.dna.sightRadius)) (\(Int(c.sightRadius))px)  fov \(Int(c.sightAngle * 180 / .pi))°"
         + "  turn \(n2(c.dna.turnRate))  reproThr \(n2(c.dna.reproductionThreshold))"
@@ -389,7 +390,7 @@ func printTraceProfile(_ c: Creature, _ world: World, _ o: Options) {
         + "  rgb(\(n2(c.dna.red)),\(n2(c.dna.green)),\(n2(c.dna.blue)))")
     if o.traceWeights {
         let w = c.dna.neuralWeights()
-        print("   NN-Gewichte (\(w.count)): " + w.map { n2($0, 3) }.joined(separator: " "))
+        print("   network weights (\(w.count)): " + w.map { n2($0, 3) }.joined(separator: " "))
     }
 }
 
@@ -454,7 +455,7 @@ let mapCols = o.mapCols
 let mapRows = max(8, Int(Double(mapCols) * Double(o.height) / Double(o.width) / 2.0))
 let wantExtras = o.detail || o.json
 
-FileHandle.standardError.write(Data("Welt \(o.width)×\(o.height)  maxFood \(world.maxFood)  maxPop \(world.maxPopulation)  Biome \(o.biomes ? "an" : "aus")  min-spawn \(o.minSpawn)  → \(o.ticks) Ticks\n".utf8))
+FileHandle.standardError.write(Data("world \(o.width)x\(o.height)  maxFood \(world.maxFood)  maxPop \(world.maxPopulation)  biomes \(o.biomes ? "on" : "off")  min-spawn \(o.minSpawn)  -> \(o.ticks) ticks\n".utf8))
 
 let encoder = JSONEncoder()
 encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -508,7 +509,7 @@ var traced: [Creature] = []
 var traceStarted = false
 if o.trace {
     let lines = max(0, (traceTo - o.traceFrom) / o.traceEvery) * o.traceCreatures * 2
-    FileHandle.standardError.write(Data("Trace: Tick \(o.traceFrom)–\(traceTo), jeder \(o.traceEvery). Tick, \(o.traceCreatures) Individuen → ca. \(lines) Zeilen (~\(lines * 115 / 1024) KB)\n".utf8))
+    FileHandle.standardError.write(Data("trace: ticks \(o.traceFrom)-\(traceTo), every \(o.traceEvery) tick(s), \(o.traceCreatures) individual(s) -> about \(lines) lines (~\(lines * 115 / 1024) KB)\n".utf8))
 }
 
 emitSnapshot()   // the initial state (tick 0)
@@ -518,7 +519,7 @@ for _ in 0..<o.ticks {
     while nextStep < foodSteps.count && world.tickCount >= foodSteps[nextStep].tick {
         let cap = foodSteps[nextStep].capacity
         world.maxFood = Int(Double(cap) * scale)
-        FileHandle.standardError.write(Data("» Tick \(world.tickCount): Nahrungskapazität → \(cap) (maxFood \(world.maxFood))\n".utf8))
+        FileHandle.standardError.write(Data("> tick \(world.tickCount): food capacity -> \(cap) (maxFood \(world.maxFood))\n".utf8))
         nextStep += 1
     }
     streamEvents()                                          // this tick's events, live
@@ -540,7 +541,7 @@ for _ in 0..<o.ticks {
                     printTraceLine(c, world, o)
                     survivors.append(c)
                 } else {
-                    print("t=\(world.tickCount) #\(shortID(c)) † gestorben — Trace endet für dieses Individuum")
+                    print("t=\(world.tickCount) #\(shortID(c)) died — the trace ends for this individual")
                 }
             }
             traced = survivors
@@ -551,5 +552,5 @@ for _ in 0..<o.ticks {
 }
 let elapsed = Date().timeIntervalSince(start)
 let tps = elapsed > 0 ? Double(o.ticks) / elapsed : 0
-FileHandle.standardError.write(Data(String(format: "Fertig: %d Ticks in %.2fs (%.0f Ticks/s), Endpopulation %d\n",
+FileHandle.standardError.write(Data(String(format: "done: %d ticks in %.2fs (%.0f ticks/s), final population %d\n",
                                             o.ticks, elapsed, tps, world.creatures.count).utf8))
