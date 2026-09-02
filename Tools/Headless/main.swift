@@ -1,16 +1,16 @@
 import Foundation
 import CoreGraphics
 
-// Headless-Runner für die Swiftolution-Simulation.
-// Kompiliert nur den UI-freien Kern (World & Co.) — siehe run.sh.
-// Läuft ungebremst (kein 60-fps-Cap) und gibt periodisch Statistiken aus.
+// Headless runner for the Swiftolution simulation.
+// Compiles only the UI-free core (World and friends) — see run.sh.
+// Runs uncapped (no 60 fps limit) and prints statistics at intervals.
 //
-// Zweck: andere Systeme (inkl. LLM-Agenten) sollen die laufende Simulation so beobachten
-// können wie ein Mensch am Bildschirm. Deshalb neben Aggregaten auch:
-//   --detail  räumliche ASCII-Weltkarte + Merkmals-Histogramme + Beispielindividuen
-//   --json    strukturierte JSON-Lines (ein Objekt pro Intervall) zum maschinellen Auswerten
+// The point is to let other systems, LLM agents included, watch a running simulation the way a
+// human watches the screen. Hence, alongside the aggregates:
+//   --detail  a spatial ASCII world map, trait histograms and sample individuals
+//   --json    structured JSON lines (one object per interval) for machine consumption
 
-// MARK: - Optionen
+// MARK: - Options
 
 struct Options {
     var ticks           = 5000
@@ -18,29 +18,29 @@ struct Options {
     var width           = 2400
     var height          = 1800
     var creatures       = 80
-    var foodCapacity    = 500      // Referenz für 800×600, skaliert mit √Fläche (wie die GUI)
+    var foodCapacity    = 500      // reference for 800x600, scaled by sqrt(area) as in the GUI
     var foodGrowthRate  = 0.05
     var mutationRate:     Float = 0.05
     var mutationStrength: Float = 0.10
-    var minSpawn        = 0        // >0 = Mindest-Spawn aktiv mit dieser Schwelle (hält die Welt am Leben)
+    var minSpawn        = 0        // >0 enables minimum spawning at this threshold (keeps the world alive)
     var biomes          = false
     var seasons         = false
     var speciation      = true
     var plantToxin      = true
     var csv             = false
-    var detail          = false    // ASCII-Karte + Histogramme + Beispielindividuen
-    var json            = false    // JSON-Lines statt Tabelle
-    var events          = false    // Live-Ereignisstrom (Geburten/Tode je Tick) als NDJSON
-    var samples         = 3        // Anzahl Beispielindividuen (detail/json)
-    var mapCols         = 60       // Breite der ASCII-Weltkarte
-    var foodSteps: [(tick: Int, capacity: Int)] = []   // Nahrungsabsenkungen zur Laufzeit
-    // Verhaltens-Trace: wenige Individuen über ein enges Fenster, Wahrnehmung → Entscheidung.
+    var detail          = false    // ASCII map, histograms and sample individuals
+    var json            = false    // JSON lines instead of a table
+    var events          = false    // live event stream (births/deaths per tick) as NDJSON
+    var samples         = 3        // how many sample individuals to show (detail/json)
+    var mapCols         = 60       // width of the ASCII world map
+    var foodSteps: [(tick: Int, capacity: Int)] = []   // food reductions applied at runtime
+    // Behaviour trace: a few individuals over a narrow window, perception -> decision.
     var trace           = false
     var traceFrom       = 0
-    var traceTo         = -1       // -1 → traceFrom + 200 (sinnvolles Default-Fenster)
+    var traceTo         = -1       // -1 means traceFrom + 200, a sensible default window
     var traceEvery      = 1
     var traceCreatures  = 3
-    var traceWeights    = false    // rohe NN-Gewichte im Steckbrief (518 Zahlen/Kreatur!)
+    var traceWeights    = false    // raw network weights in the profile (518 numbers per creature!)
 }
 
 func printUsage() {
@@ -132,7 +132,7 @@ func parseArgs() -> Options {
     return o
 }
 
-// MARK: - Snapshot (eine Momentaufnahme der Welt)
+// MARK: - Snapshot (one moment of the world)
 
 struct SampleJSON: Codable {
     let x, y: Int
@@ -146,29 +146,29 @@ struct SampleJSON: Codable {
 
 struct BiomeCountJSON: Codable { let biome: String; let count: Int }
 
-// Eine Zeile im Live-Ereignisstrom (NDJSON). type = "birth" | "death".
+// One line of the live event stream (NDJSON). type = "birth" | "death".
 struct EventJSON: Codable {
     let type: String
     let tick: Int
     let x, y: Int
     let aggression: Float
-    let cause: String?   // nur bei death
+    let cause: String?   // only set for a death
 }
 
 struct SnapshotJSON: Codable {
-    let type: String                          // "snapshot" (unterscheidet von Event-Zeilen im Stream)
+    let type: String                          // "snapshot" — tells these apart from event lines in the stream
     let tick, generation, population: Int
     let herbivores, omnivores, carnivores, species: Int
     let plants, maxFood, corpses, oldest: Int
-    let birthsInterval, deathsInterval: Int   // seit letztem Intervall
-    let deathsStarvation, deathsPredation, deathsOldAge: Int   // seit letztem Intervall
+    let birthsInterval, deathsInterval: Int   // since the last interval
+    let deathsStarvation, deathsPredation, deathsOldAge: Int   // since the last interval
     let avgAggression, avgSize, avgSpeed, avgAge, avgEnergy: Double
     let perBiome: [BiomeCountJSON]?
-    let aggressionHistogram: [Int]            // 10 Bins über [0,1]
+    let aggressionHistogram: [Int]            // 10 bins over [0,1]
     let sizeHistogram: [Int]
     let speedHistogram: [Int]
-    let map: [String]?                        // gerenderte ASCII-Zeilen (Terrain + Kreaturdichte)
-    let creatureGrid: [[Int]]?                // rohe Kreaturzahlen je Zelle (rows × cols)
+    let map: [String]?                        // rendered ASCII rows (terrain plus creature density)
+    let creatureGrid: [[Int]]?                // raw creature counts per cell (rows x cols)
     let samples: [SampleJSON]?
 }
 
@@ -182,7 +182,7 @@ func biomeChar(_ b: Biome) -> Character {
     }
 }
 
-// Baut die vollständige Momentaufnahme in einem Pass über die Population.
+// Builds the complete snapshot in a single pass over the population.
 struct DeathTotals { var births = 0, deaths = 0, starvation = 0, predation = 0, oldAge = 0 }
 
 func buildSnapshot(_ world: World, _ o: Options,
@@ -220,7 +220,7 @@ func buildSnapshot(_ world: World, _ o: Options,
     let n = Double(max(1, world.creatures.count))
     let species = world.speciationEnabled ? world.countSpecies(threshold: world.speciationThreshold) : 0
 
-    // ASCII-Karte: belegte Zelle → Kreaturzahl (1–9 / #), leere Zelle → Terrainbuchstabe.
+    // ASCII map: an occupied cell shows its creature count (1-9 / #), an empty one a terrain letter.
     var mapLines: [String]? = nil
     if wantExtras {
         var lines: [String] = []
@@ -242,7 +242,7 @@ func buildSnapshot(_ world: World, _ o: Options,
         mapLines = lines
     }
 
-    // Beispielindividuen: ältestes, energiereichstes, dann zufällige — dedupliziert.
+    // Sample individuals: the oldest, the most energetic, then random ones — deduplicated.
     var samples: [SampleJSON]? = nil
     if wantExtras && o.samples > 0 && !world.creatures.isEmpty {
         var picked: [Creature] = []
@@ -291,7 +291,7 @@ func buildSnapshot(_ world: World, _ o: Options,
         map: mapLines, creatureGrid: wantExtras ? grid : nil, samples: samples)
 }
 
-// MARK: - Menschenlesbare Ausgabe
+// MARK: - Human-readable output
 
 func fmt(_ v: Double, _ w: Int, _ p: Int = 2) -> String { String(format: "%\(w).\(p)f", v) }
 func pad(_ s: String, _ w: Int) -> String {
@@ -360,7 +360,7 @@ func printDetail(_ s: SnapshotJSON, biomes: Bool) {
     print("")
 }
 
-// MARK: - Verhaltens-Trace (für Analyse durch einen Beobachter, nicht für Maschinen-Parsing)
+// MARK: - Behaviour trace (tuned for an observer reading it, not for machine parsing)
 
 func n2(_ v: Float, _ p: Int = 2) -> String { String(format: "%.\(p)f", v) }
 func sg(_ v: Float, _ p: Int = 2) -> String { String(format: "%+.\(p)f", v) }
@@ -410,7 +410,7 @@ func printTraceLine(_ c: Creature, _ world: World, _ o: Options) {
     }
 }
 
-// Auswahl: ältestes + energiereichstes (bewährte Strategien) + zufällige als Baseline.
+// Selection: the oldest and the most energetic (proven strategies) plus random ones as a baseline.
 func selectTraced(_ world: World, _ count: Int) -> [Creature] {
     var picked: [Creature] = []
     func add(_ c: Creature?) {
@@ -424,13 +424,13 @@ func selectTraced(_ world: World, _ count: Int) -> [Creature] {
     return picked
 }
 
-// MARK: - Lauf
+// MARK: - Run
 
 let o = parseArgs()
 let size = CGSize(width: o.width, height: o.height)
 let world = World(size: size)
 
-// Skalierung analog SimulationEngine.syncConfigToWorld
+// Scaling mirrors SimulationEngine.syncConfigToWorld
 let scale = (Double(size.width * size.height) / (800.0 * 600.0)).squareRoot()
 world.maxFood          = Int(Double(o.foodCapacity) * scale)
 world.maxPopulation    = max(Int(300.0 * scale), o.creatures)
@@ -445,11 +445,11 @@ world.speciationEnabled = o.speciation
 world.plantToxinFactor  = o.plantToxin ? 0.60 : 0
 world.plantToxinThreshold = 0.50
 world.eventRecording    = o.events
-world.sensorRecording   = o.trace   // Wahrnehmung nur speichern, wenn getract wird
+world.sensorRecording   = o.trace   // only store perception while actually tracing
 
 world.populate(creatures: o.creatures, food: world.maxFood)
 
-// Kartendimensionen (Zeichen sind ~2:1 hoch → Höhe halbieren)
+// Map dimensions (characters are roughly 2:1 tall, so halve the height)
 let mapCols = o.mapCols
 let mapRows = max(8, Int(Double(mapCols) * Double(o.height) / Double(o.width) / 2.0))
 let wantExtras = o.detail || o.json
@@ -463,7 +463,7 @@ func jsonLine<T: Encodable>(_ v: T) -> String? {
     return String(data: d, encoding: .utf8)
 }
 
-// NDJSON, sobald Snapshots (--json) ODER Ereignisse (--events) strukturiert ausgegeben werden.
+// NDJSON as soon as either snapshots (--json) OR events (--events) are emitted structurally.
 let ndjson = o.json || o.events
 var prev = DeathTotals()
 
@@ -498,11 +498,11 @@ if o.csv && !ndjson {
     print(humanHeader)
 }
 
-// Nahrungsabsenkungen nach Tick sortiert abarbeiten (Kapazität wird √-flächenskaliert wie beim Start).
+// Apply the food reductions in tick order (capacity is area-scaled by sqrt, as at startup).
 let foodSteps = o.foodSteps.sorted { $0.tick < $1.tick }
 var nextStep = 0
 
-// Trace-Fenster: Default 200 Ticks ab traceFrom — bewusst eng, der Trace ist zum Lesen da.
+// Trace window: 200 ticks from traceFrom by default — deliberately narrow, since it is meant to be read.
 let traceTo = o.traceTo >= 0 ? o.traceTo : o.traceFrom + 200
 var traced: [Creature] = []
 var traceStarted = false
@@ -511,7 +511,7 @@ if o.trace {
     FileHandle.standardError.write(Data("Trace: Tick \(o.traceFrom)–\(traceTo), jeder \(o.traceEvery). Tick, \(o.traceCreatures) Individuen → ca. \(lines) Zeilen (~\(lines * 115 / 1024) KB)\n".utf8))
 }
 
-emitSnapshot()   // Ausgangszustand (Tick 0)
+emitSnapshot()   // the initial state (tick 0)
 let start = Date()
 for _ in 0..<o.ticks {
     world.tick()
@@ -521,10 +521,10 @@ for _ in 0..<o.ticks {
         FileHandle.standardError.write(Data("» Tick \(world.tickCount): Nahrungskapazität → \(cap) (maxFood \(world.maxFood))\n".utf8))
         nextStep += 1
     }
-    streamEvents()                                          // Ereignisse dieses Ticks live
+    streamEvents()                                          // this tick's events, live
 
-    // Verhaltens-Trace: dieselben Individuen über das Fenster verfolgen (nicht jedes Mal neue),
-    // damit zusammenhängende Trajektorien entstehen.
+    // Behaviour trace: follow the same individuals across the window rather than picking new
+    // ones each time, so the trajectories hang together.
     if o.trace, world.tickCount >= o.traceFrom, world.tickCount <= traceTo {
         if !traceStarted {
             traceStarted = true
@@ -547,7 +547,7 @@ for _ in 0..<o.ticks {
         }
     }
 
-    if world.tickCount % o.interval == 0 { emitSnapshot() } // periodische Zusammenfassung
+    if world.tickCount % o.interval == 0 { emitSnapshot() } // the periodic summary
 }
 let elapsed = Date().timeIntervalSince(start)
 let tps = elapsed > 0 ? Double(o.ticks) / elapsed : 0

@@ -1,7 +1,7 @@
 import SwiftUI
 import Charts
 
-// MARK: - Panel (zwei Charts nebeneinander)
+// MARK: - Panel (two charts side by side)
 
 struct ChartsPanel: View {
     @ObservedObject var tracker: StatisticsTracker
@@ -19,7 +19,7 @@ struct ChartsPanel: View {
     }
 }
 
-// MARK: - Populations-Zeitreihe
+// MARK: - Population time series
 
 struct PopulationChart: View {
     let snapshots: [StatSnapshot]
@@ -68,7 +68,7 @@ struct PopulationChart: View {
     }
 }
 
-// MARK: - Trait-Zeitreihe
+// MARK: - Trait time series
 
 struct TraitsChart: View {
     let snapshots: [StatSnapshot]
@@ -120,7 +120,7 @@ struct TraitsChart: View {
     }
 }
 
-// MARK: - Hilfsview
+// MARK: - Helper view
 
 private struct ChartBox<Content: View>: View {
     let title: String

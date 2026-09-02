@@ -3,27 +3,27 @@ import CoreGraphics
 
 struct DNA {
 
-    // MARK: - Gene
+    // MARK: - Genes
 
     var genes: [Float]
 
     var speed:                Float { genes[0] }
     var sightRadius:          Float { genes[1] }
     var size:                 Float { genes[2] }
-    var aggression:           Float { genes[3] }  // 0 = reiner Pflanzenfresser, 1 = reiner Fleischfresser
+    var aggression:           Float { genes[3] }  // 0 = pure herbivore, 1 = pure carnivore
     var maxAge:                Int   { max(1, Int(genes[4] * 1000)) }
     var reproductionThreshold: Float { genes[5] }
-    var brainSize:             Float { genes[6] }   // [0,1] → minHiddenCount…maxHiddenCount Neuronen
+    var brainSize:             Float { genes[6] }   // [0,1] -> minHiddenCount...maxHiddenCount neurons
     var red:                   Float { genes[7] }
     var green:                 Float { genes[8] }
     var blue:                  Float { genes[9] }
-    // 0 → 1 Nachkomme (r-Stratege: viele, billige Nachkommen), 1 → 4 (K-Stratege: wenige, teure)
+    // 0 -> 1 offspring (r-strategist: many, cheap), 1 -> 4 (K-strategist: few, expensive)
     var litterSize:            Int   { max(1, Int(genes[10] * 3) + 1) }   // [1, 4]
-    // Sichtwinkel: gene=0 → 120° (schmaler Vorwärtskegel), gene=1 → 360° (Vollkreis)
+    // Sight angle: gene=0 -> 120 degrees (narrow forward cone), gene=1 -> 360 (full circle)
     var sightAngle:            Float { genes[11] }
-    // Drehgeschwindigkeit: gene=0 → 0.05 rad/Tick (träge), gene=1 → 0.40 rad/Tick (wendig)
+    // Turn rate: gene=0 -> 0.05 rad/tick (sluggish), gene=1 -> 0.40 rad/tick (nimble)
     var turnRate:              Float { genes[12] }
-    // Geruchssinn: gene=0 → 30 px (kaum), gene=1 → 200 px (weite omnidirektionale Wahrnehmung)
+    // Olfaction: gene=0 -> 30 px (barely), gene=1 -> 200 px (wide omnidirectional perception)
     var olfaction:             Float { genes[13] }
 
     static let neuralWeightsStartIndex = 14
@@ -49,13 +49,13 @@ struct DNA {
             let roll = Float.random(in: 0...1)
             let delta: Float
             if roll < 0.01 {
-                // 1 %: Makro-Mutation — springt in neue Strategie-Region
+                // 1%: macro mutation — jumps into a new region of strategy space
                 delta = Float.random(in: -strength * 5 ... strength * 5)
             } else if roll < 0.05 {
-                // 4 %: Mittlere Mutation — erkundet breiteren Bereich
+                // 4%: medium mutation — explores a wider neighbourhood
                 delta = Float.random(in: -strength * 2 ... strength * 2)
             } else {
-                // 95 %: Mikro-Mutation — feines Tuning
+                // 95%: micro mutation — fine tuning
                 delta = Float.random(in: -strength...strength)
             }
             newGenes[i] = max(0, min(1, newGenes[i] + delta))
@@ -71,19 +71,20 @@ struct DNA {
         return DNA(genes: childGenes)
     }
 
-    // MARK: - NN-Gewichte
+    // MARK: - Network weights
 
     func neuralWeights() -> [Float] {
         Array(genes[DNA.neuralWeightsStartIndex...])
     }
 
-    // MARK: - Genetische Distanz (Artkennung)
+    // MARK: - Genetic distance (species identity)
 
-    // "Species-Signatur" für assortative Paarung: Farbe (sichtbar + als Sensor wahrgenommen)
-    // dominiert, Aggression steuert die ökologische Nische mit bei. Bewusst NICHT das ganze
-    // Genom — bei ~200 NN-Gewichten wären alle Paare gleich weit entfernt (Fluch der Dimension),
-    // und Farbe ist das Signal, das man auf dem Bildschirm als Cluster sehen kann.
-    // Euklidische Distanz über 4 Marker in [0,1] → Wertebereich [0, 2].
+    // A "species signature" for assortative mating: color dominates (it is both visible on
+    // screen and perceived as a sensor input), with aggression contributing the ecological
+    // niche. Deliberately NOT the whole genome — across ~200 network weights every pair would
+    // sit at roughly the same distance (the curse of dimensionality), and color is the signal
+    // one can actually watch cluster on screen.
+    // Euclidean distance over 4 markers in [0,1], so the range is [0, 2].
     func geneticDistance(to other: DNA) -> Float {
         let dr = red        - other.red
         let dg = green      - other.green

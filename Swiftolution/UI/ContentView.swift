@@ -26,7 +26,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - SpriteKit-Canvas
+// MARK: - SpriteKit canvas
 
 struct SimulationView: NSViewRepresentable {
     let scene: GameScene
@@ -56,14 +56,14 @@ struct SidebarView: View {
                     .font(.headline)
                     .padding(.bottom, 2)
 
-                // MARK: Kreatur-Inspektion
+                // MARK: Creature inspector
                 if let snapshot = engine.inspectedCreature {
                     SidebarSection(title: "Ausgewählte Kreatur") {
                         InspectionView(snapshot: snapshot)
                     }
                 }
 
-                // MARK: Statistiken
+                // MARK: Statistics
                 SidebarSection(title: "Statistiken") {
                     StatRow(label: "Tick",          value: "\(engine.stats.tickCount)")
                     StatRow(label: "Generation",    value: "\(engine.stats.generation)")
@@ -98,7 +98,7 @@ struct SidebarView: View {
                     }
                 }
 
-                // MARK: Steuerung
+                // MARK: Controls
                 SidebarSection(title: "Steuerung") {
                     Button(engine.isPaused ? "Fortsetzen" : "Pause") {
                         engine.togglePause()
@@ -120,13 +120,14 @@ struct SidebarView: View {
                     .onChange(of: speedMultiplier) { _, v in engine.setSpeed(v) }
                 }
 
-                // MARK: Umgebung (sofort wirksam)
+                // MARK: Environment (takes effect immediately)
                 SidebarSection(title: "Umgebung") {
-                    // Obergrenze 3000: die Kapazität ist ein Referenzwert für 800×600 und wird
-                    // mit √Fläche skaliert. Die Maximalwelt (4800×3600) hat die 36-fache Fläche,
-                    // bekommt aber nur den Faktor 6 — die Dichte fiele auf ein Sechstel. Erst bei
-                    // 3000 erreicht sie dieselbe Dichte wie die Standardwelt bei 1500, was die
-                    // Bootstrap-Phase (Start mit maximaler Nahrung) auch in großen Welten trägt.
+                    // Ceiling of 3000: capacity is a reference value for an 800x600 world,
+                    // scaled by sqrt(area). The largest world (4800x3600) has 36 times the
+                    // reference area but only gets a factor of 6, so its density would fall to
+                    // a sixth. At 3000 it reaches the same density the default world has at
+                    // 1500, which is what carries the bootstrap phase (starting at maximum
+                    // food) in large worlds too.
                     ParamSlider(
                         label: "Nahrungskapazität",
                         displayValue: "\(engine.config.foodCapacity)",
@@ -194,9 +195,9 @@ struct SidebarView: View {
                         )
                     }
 
-                    // Äquator-Gradient und Biome sind zwei Wege für dieselbe räumliche
-                    // Fruchtbarkeitsverteilung — Biome sind die Obermenge und haben Vorrang.
-                    // Bei aktiven Biomen wäre der Gradient wirkungslos, daher ausgeblendet.
+                    // The equator gradient and biomes are two routes to the same spatial
+                    // fertility distribution, and biomes are the superset that takes precedence.
+                    // With biomes on the gradient would do nothing, so it is hidden.
                     if !engine.config.biomesEnabled {
                         Toggle("Äquator-Gradient", isOn: Binding(
                             get: { engine.config.latitudeGradientEnabled },
@@ -207,7 +208,7 @@ struct SidebarView: View {
                     }
                 }
 
-                // MARK: Evolution (sofort wirksam)
+                // MARK: Evolution (takes effect immediately)
                 SidebarSection(title: "Evolution") {
                     ParamSlider(
                         label: "Mutationsrate",
@@ -277,7 +278,7 @@ struct SidebarView: View {
                     }
                 }
 
-                // MARK: Startbedingungen (gilt beim Neustart)
+                // MARK: Starting conditions (applied on restart)
                 SidebarSection(title: "Start (nach Neustart)") {
                     ParamSlider(
                         label: "Weltbreite",
@@ -325,7 +326,7 @@ struct SidebarView: View {
     }
 }
 
-// MARK: - Hilfsviews
+// MARK: - Helper views
 
 private struct SidebarSection<Content: View>: View {
     let title: String

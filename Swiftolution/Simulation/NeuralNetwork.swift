@@ -2,29 +2,29 @@ import Foundation
 
 struct NeuralNetwork {
 
-    // MARK: - Architektur
+    // MARK: - Architecture
 
     static let inputCount    = 25
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
     static let outputCount   = 6   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEatPlant, wantsToEatCorpse
 
-    // DNA speichert immer Gewichte für maxHiddenCount — unabhängig von der tatsächlichen Gehirngröße.
-    // So bleibt die DNA-Länge konstant und Crossover funktioniert ohne Sonderbehandlung.
+    // DNA always stores weights for maxHiddenCount, whatever the actual brain size. That keeps
+    // the genome length constant, so crossover works without any special casing.
     static var totalWeightCount: Int {
         let layer1 = inputCount * maxHiddenCount + maxHiddenCount
         let layer2 = maxHiddenCount * outputCount + outputCount
         return layer1 + layer2
     }
 
-    // MARK: - Gewichte
+    // MARK: - Weights
 
-    // Flache, zeilenweise Buffer statt [[Float]] — zusammenhängender Speicher,
-    // keine Pointer-Indirektion pro Neuron.
+    // Flat row-major buffers instead of [[Float]]: contiguous memory, and no pointer
+    // indirection per neuron.
     let hiddenCount: Int
-    private var weightsIH: [Float]   // hiddenCount × inputCount
+    private var weightsIH: [Float]   // hiddenCount x inputCount
     private var biasH:     [Float]   // hiddenCount
-    private var weightsHO: [Float]   // outputCount × hiddenCount
+    private var weightsHO: [Float]   // outputCount x hiddenCount
     private var biasO:     [Float]   // outputCount
 
     // MARK: - Init
@@ -41,9 +41,9 @@ struct NeuralNetwork {
             return
         }
 
-        // DNA-Gene liegen in [0,1]. Für NN-Gewichte auf [-1,1] remappen,
-        // damit positive und negative Einflüsse gleichwahrscheinlich sind.
-        // Ohne das würden alle Neuronen systematisch in eine Richtung feuern.
+        // Genes live in [0,1]. Remap them to [-1,1] for network weights so that positive and
+        // negative influences are equally likely — otherwise every neuron would be biased to
+        // fire in the same direction.
         func w(_ v: Float) -> Float { v * 2 - 1 }
 
         var idx = 0
@@ -73,8 +73,8 @@ struct NeuralNetwork {
 
     // MARK: - Forward Pass
 
-    // Heißester Pfad der Simulation (Population × 30 Aufrufe pro Frame):
-    // Input- und Hidden-Werte leben in einem Stack-Puffer, keine Heap-Allokation.
+    // The hottest path in the simulation (population x 30 calls per frame): input and hidden
+    // values live in a stack buffer, with no heap allocation.
     func activate(inputs: SensorInput) -> ActionOutput {
         let hc = hiddenCount
         let ic = NeuralNetwork.inputCount
@@ -98,7 +98,7 @@ struct NeuralNetwork {
                         var sum = bO[o]
                         let rowBase = o * hc
                         for h in 0..<hc { sum += wHO[rowBase + h] * buf[ic + h] }
-                        return 1.0 / (1.0 + exp(-sum))   // Sigmoid
+                        return 1.0 / (1.0 + exp(-sum))   // sigmoid
                     }
                     out = (neuron(0), neuron(1), neuron(2), neuron(3), neuron(4), neuron(5))
                 }
@@ -110,41 +110,42 @@ struct NeuralNetwork {
     }
 }
 
-// MARK: - Sensor-Daten (Inputs)
+// MARK: - Sensor data (inputs)
 
 struct SensorInput {
-    var angleToFood:               Float   // -1 (links) bis +1 (rechts), relativ zur Blickrichtung
-    var distanceToFood:            Float   // 0 = direkt daneben, 1 = Rand des Sichtradius
+    var angleToFood:               Float   // -1 (left) to +1 (right), relative to the heading
+    var distanceToFood:            Float   // 0 = right next to it, 1 = edge of the sight radius
     var angleToCreature:           Float
     var distanceToCreature:        Float
-    var ownEnergy:                 Float   // 0 = leer, 1 = voll
-    var localDensity:              Float   // 0 = allein, 1 = sehr viele Artgenossen in der Nähe
-    var approachVelocity:          Float   // >0 = Kreatur nähert sich, <0 = flieht, normiert [-1, +1]
-    var nearestFoodType:           Float   // 0 = Pflanze, 1 = Leiche
-    var avgNearbyHeading:          Float   // Ø Bewegungsrichtung der Nachbarn relativ zur eigenen [-1, +1]
-    // Farbe der nächsten sichtbaren Kreatur (DNA-Gene [0,1]; 0.5/0.5/0.5 wenn keine sichtbar)
+    var ownEnergy:                 Float   // 0 = empty, 1 = full
+    var localDensity:              Float   // 0 = alone, 1 = densely surrounded by others
+    var approachVelocity:          Float   // >0 = creature closing in, <0 = fleeing; normalized [-1, +1]
+    var nearestFoodType:           Float   // 0 = plant, 1 = corpse
+    var avgNearbyHeading:          Float   // mean heading of neighbours relative to own [-1, +1]
+    // Color of the nearest visible creature (genes in [0,1]; 0.5/0.5/0.5 when none is visible)
     var nearestCreatureRed:        Float
     var nearestCreatureGreen:      Float
     var nearestCreatureBlue:       Float
-    var visibleCreatureCount:      Float   // normiert [0,1]: min(Anzahl, 10) / 10
-    var ownSenescence:             Float   // 0 = jung, 1 = hoch gealtert
-    var visibleFoodCount:          Float   // normiert [0,1]: min(Anzahl, 10) / 10
-    var localPlantDensity:         Float   // 0 = karg, 1 = üppig (omnidirektionaler Geruch, skaliert mit olfaction-Gen)
-    var recentFeedingRate:         Float   // 0 = lange nichts gefressen, 1 = gut ernährt
-    // Wahrnehmung des aktuellen Bioms (funktional statt als Ein-aus-Kennung: die Kreatur
-    // "fühlt" die ökologischen Bedingungen ihres Standorts und kann sie unterscheiden).
-    var localFertility:            Float   // 0 = unfruchtbar (Wüste/Wasser), 1 = üppigste Zone (Sumpf)
-    var localCover:                Float   // 0 = freies Blickfeld, 1 = maximale Deckung (Wald)
-    var localDifficulty:           Float   // 0 = leicht begehbar, 1 = zähster Untergrund (Sumpf)
-    // Richtungsaufgelöste Terrain-Wahrnehmung im Sichtfeld: je Biom −1 (links) … +1 (rechts),
-    // 0 = nicht in Sicht oder genau voraus. Erlaubt Zusteuern aufs bevorzugte Terrain / Meiden von Wasser.
+    var visibleCreatureCount:      Float   // normalized [0,1]: min(count, 10) / 10
+    var ownSenescence:             Float   // 0 = young, 1 = deeply aged
+    var visibleFoodCount:          Float   // normalized [0,1]: min(count, 10) / 10
+    var localPlantDensity:         Float   // 0 = barren, 1 = lush (omnidirectional smell, scaled by the olfaction gene)
+    var recentFeedingRate:         Float   // 0 = has not eaten in a long while, 1 = well fed
+    // Perception of the current biome, expressed functionally rather than as a one-hot id:
+    // the creature "feels" the ecological conditions where it stands and can tell them apart.
+    var localFertility:            Float   // 0 = barren (desert/water), 1 = the lushest zone (wetland)
+    var localCover:                Float   // 0 = clear view, 1 = maximum cover (forest)
+    var localDifficulty:           Float   // 0 = easy going, 1 = the heaviest ground (wetland)
+    // Direction-resolved terrain perception across the field of view: per biome -1 (left) ...
+    // +1 (right), with 0 meaning out of sight or dead ahead. This is what lets creatures steer
+    // toward preferred terrain and away from water.
     var terrainBearingGrassland:   Float
     var terrainBearingForest:      Float
     var terrainBearingDesert:      Float
     var terrainBearingWetland:     Float
     var terrainBearingWater:       Float
 
-    // Schreibt die Inputs in einen (Stack-)Puffer — Reihenfolge definiert das NN-Input-Layout.
+    // Writes the inputs into a (stack) buffer — the order defines the network's input layout.
     func write(to buf: UnsafeMutableBufferPointer<Float>) {
         buf[0]  = angleToFood
         buf[1]  = distanceToFood
@@ -174,16 +175,16 @@ struct SensorInput {
     }
 }
 
-// MARK: - Aktionen (Outputs)
+// MARK: - Actions (outputs)
 
 struct ActionOutput {
-    var turnAngle:        Float   // sigmoid → [0,1], wird in Creature auf [-maxTurn, +maxTurn] gemappt
-    var speed:            Float   // [0,1] → wird auf Pixel/Tick skaliert
-    var wantsToReproduce: Float   // > 0.5 = ja
-    var wantsToAttack:    Float   // > 0.5 = Angriff auf nächstes Lebewesen
-    // Getrennte Fress-Schalter → das NN kann selektive Diäten lernen (Pflanzen ja, Aas nein o. umgekehrt).
-    var wantsToEatPlant:  Float   // > 0.5 = Pflanze in Reichweite aktiv fressen
-    var wantsToEatCorpse: Float   // > 0.5 = Leiche in Reichweite aktiv fressen
+    var turnAngle:        Float   // sigmoid -> [0,1], mapped to [-maxTurn, +maxTurn] in Creature
+    var speed:            Float   // [0,1] -> scaled to pixels per tick
+    var wantsToReproduce: Float   // > 0.5 = yes
+    var wantsToAttack:    Float   // > 0.5 = attack the nearest creature
+    // Separate feeding switches, so the network can evolve selective diets (plants yes, carrion no, or the reverse).
+    var wantsToEatPlant:  Float   // > 0.5 = actively eat a plant within reach
+    var wantsToEatCorpse: Float   // > 0.5 = actively eat a corpse within reach
 
     init(turnAngle: Float, speed: Float, wantsToReproduce: Float,
          wantsToAttack: Float, wantsToEatPlant: Float, wantsToEatCorpse: Float) {
@@ -200,7 +201,7 @@ struct ActionOutput {
         speed            = arr.count > 1 ? arr[1] : 0
         wantsToReproduce = arr.count > 2 ? arr[2] : 0
         wantsToAttack    = arr.count > 3 ? arr[3] : 0
-        wantsToEatPlant  = arr.count > 4 ? arr[4] : 1   // Default: fressen (sicherer Start)
-        wantsToEatCorpse = arr.count > 5 ? arr[5] : 1   // Default: fressen (sicherer Start)
+        wantsToEatPlant  = arr.count > 4 ? arr[4] : 1   // default: eat (a safe start)
+        wantsToEatCorpse = arr.count > 5 ? arr[5] : 1   // default: eat (a safe start)
     }
 }

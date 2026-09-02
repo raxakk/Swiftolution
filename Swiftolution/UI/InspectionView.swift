@@ -6,12 +6,12 @@ struct InspectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
 
-            // Typ-Badge
+            // Diet badge
             Text(snapshot.isHerbivore ? "Pflanzenfresser" : "Fleischfresser")
                 .font(.caption.bold())
                 .foregroundStyle(snapshot.isHerbivore ? Color.green : Color.red)
 
-            // Aktuelles Biom (nur wenn Biome aktiv)
+            // The current biome (only when biomes are on)
             if let biome = snapshot.biomeName {
                 HStack {
                     Text("Biom").font(.caption2).foregroundStyle(.secondary)
@@ -20,7 +20,7 @@ struct InspectionView: View {
                 }
             }
 
-            // Zustand
+            // State
             TraitBar(label: "Energie",
                      value: snapshot.energyRatio,
                      color: energyColor(snapshot.energyRatio))
@@ -69,7 +69,7 @@ struct InspectionView: View {
 
             Divider()
 
-            // Aktuelles Verhalten
+            // Current behaviour
             Text("Verhalten (aktuell)")
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
@@ -88,7 +88,7 @@ struct InspectionView: View {
     }
 }
 
-// MARK: - Hilfsview
+// MARK: - Helper view
 
 private struct TraitBar: View {
     let label: String

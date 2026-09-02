@@ -30,16 +30,16 @@ struct SwiftolutionTests {
 
     @Test func dnaLitterSizeMapping() {
         var dna = DNA.random()
-        // genes[10] = 0.0 → max(1, Int(0*3)+1) = 1
+        // genes[10] = 0.0 -> max(1, Int(0*3)+1) = 1
         dna.genes[10] = 0.0
         #expect(dna.litterSize == 1)
-        // genes[10] = 1.0 → max(1, Int(3)+1) = 4
+        // genes[10] = 1.0 -> max(1, Int(3)+1) = 4
         dna.genes[10] = 1.0
         #expect(dna.litterSize == 4)
-        // genes[10] = 0.5 → max(1, Int(1.5)+1) = 2
+        // genes[10] = 0.5 -> max(1, Int(1.5)+1) = 2
         dna.genes[10] = 0.5
         #expect(dna.litterSize == 2)
-        // genes[10] = 0.667 → max(1, Int(2.0)+1) = 3
+        // genes[10] = 0.667 -> max(1, Int(2.0)+1) = 3
         dna.genes[10] = 0.667
         #expect(dna.litterSize == 3)
     }
@@ -59,22 +59,22 @@ struct SwiftolutionTests {
         #expect(dna.neuralWeights().count == NeuralNetwork.totalWeightCount)
     }
 
-    // MARK: - Genetische Distanz (Artkennung)
+    // MARK: - Genetic distance (species identity)
 
     @Test func geneticDistanceZeroForIdenticalMarkers() {
         var a = DNA.random()
         var b = a
-        // Marker angleichen (Farbe 7,8,9 + Aggression 3), NN-Gewichte dürfen abweichen
+        // Align the markers (color 7,8,9 plus aggression 3); the network weights may differ
         for i in [3, 7, 8, 9] { b.genes[i] = a.genes[i] }
         #expect(a.geneticDistance(to: b) == 0)
     }
 
     @Test func geneticDistanceGrowsWithColorGap() {
         var a = DNA.random(); a.genes[3] = 0.5; a.genes[7] = 0; a.genes[8] = 0; a.genes[9] = 0
-        var b = a; b.genes[7] = 1   // rot maximal auseinander
+        var b = a; b.genes[7] = 1   // maximally far apart on red
         var c = a; c.genes[7] = 0.2
         #expect(a.geneticDistance(to: b) > a.geneticDistance(to: c))
-        // Marker in [0,1] über 4 Achsen → Distanz nie größer als 2
+        // Markers in [0,1] over 4 axes, so the distance never exceeds 2
         #expect(a.geneticDistance(to: b) <= 2.0)
     }
 
@@ -85,21 +85,21 @@ struct SwiftolutionTests {
     }
 
     @Test func speciationBlocksDistantPartners() {
-        // Zwei genetisch weit entfernte, paarungsbereite Kreaturen dürfen sich NICHT sexuell paaren.
+        // Two genetically distant creatures, both ready to mate, must NOT reproduce sexually.
         let world = World(size: CGSize(width: 200, height: 200))
         world.maxPopulation      = 100
         world.speciationEnabled  = true
         world.speciationThreshold = 0.3
 
         var dnaA = DNA.random()
-        dnaA.genes[4]  = 0.1   // maxAge 100 → reif ab age > 10
-        dnaA.genes[5]  = 0.0   // Energie-Schwelle 55%
+        dnaA.genes[4]  = 0.1   // maxAge 100 -> mature above age 10
+        dnaA.genes[5]  = 0.0   // energy threshold 55%
         dnaA.genes[10] = 0.0   // litterSize 1
         dnaA.genes[3]  = 0.2
         dnaA.genes[7]  = 0.0; dnaA.genes[8] = 0.0; dnaA.genes[9] = 0.0
 
         var dnaB = dnaA
-        dnaB.genes[7] = 1.0; dnaB.genes[8] = 1.0; dnaB.genes[9] = 1.0  // ganz andere Farbe → Distanz ~1.73
+        dnaB.genes[7] = 1.0; dnaB.genes[8] = 1.0; dnaB.genes[9] = 1.0  // a completely different color -> distance ~1.73
 
         let a = Creature(dna: dnaA, position: CGPoint(x: 100, y: 100))
         let b = Creature(dna: dnaB, position: CGPoint(x: 105, y: 100))
@@ -112,9 +112,9 @@ struct SwiftolutionTests {
         world.rebuildGrid()
         world.reproduceCreatures()
 
-        // Beide sind nun asexuelle Nachkommen möglich, aber KEIN gemeinsames Kind:
-        // Ein sexuelles Kind läge auf dem Mittelpunkt (102.5,100) — asexuelle streuen um den Elternpunkt.
-        // Robuster Check: kein Kind ist genetisch nahe an BEIDEN Eltern zugleich.
+        // Asexual offspring are now possible for both, but no SHARED child: a sexual child
+        // would sit at the midpoint (102.5,100), whereas asexual ones scatter around their
+        // parent. The robust check: no child is genetically close to BOTH parents at once.
         let children = world.creatures.filter { $0 !== a && $0 !== b }
         for child in children {
             let hybrid = child.dna.geneticDistance(to: dnaA) < 0.5
@@ -124,7 +124,7 @@ struct SwiftolutionTests {
     }
 
     @Test func speciationAllowsSimilarPartners() {
-        // Genetisch nahe Partner paaren sich sexuell (gemeinsames Kind entsteht).
+        // Genetically close partners do mate sexually, producing a shared child.
         let world = World(size: CGSize(width: 200, height: 200))
         world.maxPopulation       = 100
         world.mutationRate        = 0.0
@@ -149,12 +149,12 @@ struct SwiftolutionTests {
         world.rebuildGrid()
         world.reproduceCreatures()
 
-        #expect(world.creatures.count > 2)   // mindestens ein Nachkomme
+        #expect(world.creatures.count > 2)   // at least one offspring
     }
 
     @Test func countSpeciesSeparatesColorClusters() {
         let world = World(size: CGSize(width: 200, height: 200))
-        // Zwei klar getrennte Farb-Cluster
+        // Two clearly separated color clusters
         for _ in 0..<5 {
             var dna = DNA.random(); dna.genes[3] = 0.2
             dna.genes[7] = 0.0; dna.genes[8] = 0.0; dna.genes[9] = 0.0
@@ -297,11 +297,11 @@ struct SwiftolutionTests {
         #expect(abs(creature.energy - 80) < 0.01)
     }
 
-    // MARK: - World: feeding rules (kontinuierliche Verdaulichkeit + Mindest-Threshold)
+    // MARK: - World: feeding rules (continuous digestibility plus a minimum threshold)
 
     @Test func herbivoreScavengesCorpseAtBaseRate() {
-        // Aas als Trittstein: aggression=0 → corpse digestibility = 0.2 + 0*0.60 = 0.2
-        // (opportunistisches Aasfressen; früher 0 → hartes Fitness-Tal zwischen den Diäten)
+        // Carrion as a stepping stone: aggression=0 -> corpse digestibility = 0.2 + 0*0.60 = 0.2
+        // (opportunistic scavenging; it used to be 0, which put a hard fitness valley between the diets)
         var dna = DNA.random()
         dna.genes[3] = 0.0
         let creature = Creature(dna: dna, position: .zero)
@@ -314,7 +314,7 @@ struct SwiftolutionTests {
         var dna = DNA.random(); dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
         let initialEnergy   = creature.energy
-        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0])  // wantsToEatPlant/Corpse=0
+        creature.lastAction = ActionOutput(fromArray: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0])  // wantsToEatPlant/Corpse = 0
         world.creatures     = [creature]
         world.foodSources   = [FoodSource(position: CGPoint(x: 100, y: 100),
                                           energyValue: 100, type: .plant)]
@@ -326,9 +326,9 @@ struct SwiftolutionTests {
     }
 
     @Test func herbivoreGainsReducedEnergyFromCorpse() {
-        // Kein "falsches Futter"-Strafmodell mehr: Pflanzenfresser (aggr=0) verwertet Aas zu 20 %
-        // → gewinnt Energie (100 × 0.2 = 20), aber weniger als ein Fleischfresser (80).
-        var dna = DNA.random(); dna.genes[3] = 0.0  // reiner Pflanzenfresser
+        // There is no "wrong food" penalty model any more: a herbivore (aggr=0) digests carrion
+        // at 20%, so it gains energy (100 x 0.2 = 20), just less than a carnivore would (80).
+        var dna = DNA.random(); dna.genes[3] = 0.0  // pure herbivore
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse))
@@ -336,23 +336,23 @@ struct SwiftolutionTests {
     }
 
     @Test func herbivoreScavengesCorpseInWorld() {
-        // Pflanzenfresser nimmt Aas opportunistisch mit (wantsToEatCorpse default=1) → Leiche weg, Energie steigt
+        // A herbivore scavenges opportunistically (wantsToEatCorpse defaults to 1): corpse gone, energy up
         let world = World(size: CGSize(width: 200, height: 200))
         var dna = DNA.random(); dna.genes[3] = 0.0  // Herbivore
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        creature.energy = 50  // lastAction=nil → wantsToEatCorpse default=1
+        creature.energy = 50  // lastAction = nil -> wantsToEatCorpse defaults to 1
         world.creatures   = [creature]
         world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100),
                                         energyValue: 100, type: .corpse)]
         world.corpseCount = 1
         world.rebuildGrid()
         world.feedCreatures()
-        #expect(world.foodSources.isEmpty)   // Leiche gefressen → weg
-        #expect(creature.energy > 50)        // Energie gestiegen (20 % von 100)
+        #expect(world.foodSources.isEmpty)   // the corpse was eaten, so it is gone
+        #expect(creature.energy > 50)        // energy rose (20% of 100)
     }
 
     @Test func omnivoreEatsBothFoodTypes() {
-        // aggression=0.5 → plant: (1-0.35)*0.6=0.39; corpse: 0.2+0.5*0.60=0.50 — beide verwertbar
+        // aggression=0.5 -> plant: (1-0.35)*0.6=0.39; corpse: 0.2+0.5*0.60=0.50 — both are usable
         var dna = DNA.random()
         dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: .zero)
@@ -367,9 +367,9 @@ struct SwiftolutionTests {
         let corpseGain = creature.energy
         #expect(corpseGain > 0)
 
-        // Omnivore ist in beiden Strategien schlechter als der jeweilige Spezialist
-        #expect(plantGain  < 60)   // Herbivore (aggr=0) bekommt 60
-        #expect(corpseGain < 80)   // Carnivore (aggr=1) bekommt 80
+        // The omnivore does worse than the respective specialist in both strategies
+        #expect(plantGain  < 60)   // a herbivore (aggr=0) gets 60
+        #expect(corpseGain < 80)   // a carnivore (aggr=1) gets 80
     }
 
     @Test func specialistOutperformsOmnivoreOnPreferredFood() {
@@ -384,46 +384,46 @@ struct SwiftolutionTests {
 
         let plant = FoodSource(position: .zero, energyValue: 100, type: .plant)
         herb.eat(food: plant); omni.eat(food: plant)
-        #expect(herb.energy > omni.energy)   // Spezialist gewinnt bei Pflanzen
+        #expect(herb.energy > omni.energy)   // the specialist wins on plants
 
         omni.energy = 0; carn.energy = 0
         let corpse = FoodSource(position: .zero, energyValue: 100, type: .corpse)
         omni.eat(food: corpse); carn.eat(food: corpse)
-        #expect(carn.energy > omni.energy)   // Spezialist gewinnt bei Leichen
+        #expect(carn.energy > omni.energy)   // the specialist wins on corpses
     }
 
-    // MARK: - Pflanzengift (Schwellen-Variante)
+    // MARK: - Plant toxin (threshold variant)
 
     @Test func carnivoreLosesEnergyEatingPlantWithToxin() {
-        // aggr=1.0, Schwelle 0.5, Faktor 0.6: plant d=0.18 → +5.4, Giftlast 0.5×0.6×30=9 → netto −3.6
-        var dna = DNA.random(); dna.genes[3] = 1.0   // reiner Fleischfresser
+        // aggr=1.0, threshold 0.5, factor 0.6: plant d=0.18 -> +5.4, toxin load 0.5*0.6*30=9 -> net -3.6
+        var dna = DNA.random(); dna.genes[3] = 1.0   // pure carnivore
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 50
         creature.eat(food: FoodSource(position: .zero, energyValue: 30, type: .plant),
                      plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
-        #expect(creature.energy < 50)   // Vergiftung übersteigt Nährwert → Netto-Verlust
+        #expect(creature.energy < 50)   // poisoning outweighs the nutritional value -> a net loss
     }
 
     @Test func herbivoreBelowThresholdImmuneToToxin() {
-        // aggr=0.3 unter Schwelle 0.5 → excess=0 → keine Giftlast, voller Pflanzengewinn.
-        // Belegt: der aufgefüllte Teil des Fitness-Tals bleibt unangetastet.
+        // aggr=0.3 is below the 0.5 threshold, so excess=0: no toxin load and the full plant
+        // gain. This pins down that the filled-in part of the fitness valley stays untouched.
         var dna = DNA.random(); dna.genes[3] = 0.3
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         creature.eat(food: FoodSource(position: .zero, energyValue: 30, type: .plant),
                      plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
-        let expected: Float = 30 * (1 - 0.3 * 0.7) * 0.6   // = 14.22, ungeschmälert
+        let expected: Float = 30 * (1 - 0.3 * 0.7) * 0.6   // = 14.22, undiminished
         #expect(abs(creature.energy - expected) < 0.01)
     }
 
     @Test func plantToxinLeavesCorpseGainUntouched() {
-        // Giftlast wirkt nur auf Pflanzen — das Aas-Trittstein bleibt für Fleischfresser voll erhalten.
+        // The toxin load applies to plants only — the carrion stepping stone is fully intact for carnivores.
         var dna = DNA.random(); dna.genes[3] = 1.0
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         creature.eat(food: FoodSource(position: .zero, energyValue: 100, type: .corpse),
                      plantToxinFactor: 0.6, plantToxinThreshold: 0.5)
-        #expect(abs(creature.energy - 80) < 0.01)   // 100 × 0.80, kein Abzug
+        #expect(abs(creature.energy - 80) < 0.01)   // 100 x 0.80, nothing deducted
     }
 
     // MARK: - World: energy conservation
@@ -512,7 +512,7 @@ struct SwiftolutionTests {
         world.seasonEnabled   = true
         world.seasonLength    = 100
         world.seasonAmplitude = 0.7
-        world.tickCount       = 0   // t = 0/100 = 0 → cos(0) = 1 → factor = 1.0
+        world.tickCount       = 0   // t = 0/100 = 0 -> cos(0) = 1 -> factor = 1.0
         #expect(abs(world.currentSeasonFactor - 1.0) < 0.001)
     }
 
@@ -521,7 +521,7 @@ struct SwiftolutionTests {
         world.seasonEnabled   = true
         world.seasonLength    = 100
         world.seasonAmplitude = 0.7
-        world.tickCount       = 50  // t = 0.5 → cos(π) = -1 → factor = 1-amplitude = 0.3
+        world.tickCount       = 50  // t = 0.5 -> cos(pi) = -1 -> factor = 1 - amplitude = 0.3
         #expect(abs(world.currentSeasonFactor - 0.3) < 0.001)
     }
 
@@ -541,7 +541,7 @@ struct SwiftolutionTests {
     // MARK: - World: population
 
     @Test func populateAllHerbivores() {
-        // Urknall: alle Startkreaturen sind Pflanzenfresser (aggression ≤ 0.4)
+        // The big bang: every starting creature is a herbivore (aggression <= 0.4)
         let world = World(size: CGSize(width: 1000, height: 1000))
         world.populate(creatures: 200, food: 0)
         let herbivores = world.creatures.filter { $0.dna.aggression <= 0.4 }
@@ -591,7 +591,7 @@ struct SwiftolutionTests {
         #expect(world.plantCount == 1)
     }
 
-    // MARK: - Biome
+    // MARK: - Biomes
 
     @Test func waterIsTheOnlyImpassableBiome() {
         for biome in Biome.allCases {
@@ -600,14 +600,14 @@ struct SwiftolutionTests {
     }
 
     @Test func biomePropertiesHaveExpectedOrdering() {
-        // Sumpf ist am fruchtbarsten, Wasser trägt keine Pflanzen.
+        // Wetland is the most fertile; water carries no plants at all.
         #expect(Biome.wetland.fertility == Biome.maxFertility)
         #expect(Biome.water.fertility == 0)
         #expect(Biome.water.growthFactor == 0)
-        // Wald deckt (kurze Sicht), Wüste öffnet den Blick.
+        // Forest gives cover (short sight); desert opens the view.
         #expect(Biome.forest.sightFactor < 1)
         #expect(Biome.desert.sightFactor > 1)
-        // Wiese ist überall der neutrale Referenzpunkt.
+        // Grassland is the neutral reference point throughout.
         #expect(Biome.grassland.fertility == 1)
         #expect(Biome.grassland.speedFactor == 1)
         #expect(Biome.grassland.sightFactor == 1)
@@ -618,7 +618,7 @@ struct SwiftolutionTests {
         let map  = BiomeMap(worldSize: size, tileSize: 200)
         #expect(map.cols == 12)
         #expect(map.rows == 9)
-        // Jede Position (inkl. Ränder) liefert ein gültiges Biom.
+        // Every position, edges included, yields a valid biome.
         for _ in 0..<500 {
             let p = CGPoint(x: CGFloat.random(in: 0..<size.width),
                             y: CGFloat.random(in: 0..<size.height))
@@ -627,7 +627,7 @@ struct SwiftolutionTests {
     }
 
     @Test func biomeMapGuaranteesWaterBarriers() {
-        // Über viele Karten hinweg entsteht immer mindestens eine Wasserkachel.
+        // Across many maps, at least one water tile always appears.
         for _ in 0..<10 {
             let map = BiomeMap(worldSize: CGSize(width: 2400, height: 1800), tileSize: 200)
             var hasWater = false
@@ -641,7 +641,7 @@ struct SwiftolutionTests {
     }
 
     @Test func biomeDisabledWorldBehavesAsNeutralGrassland() {
-        // Ohne Biome liefert biome(at:) überall Wiese → alle Faktoren neutral, alles passierbar.
+        // With biomes off, biome(at:) returns grassland everywhere: neutral factors, all passable.
         let world = World(size: CGSize(width: 800, height: 600))
         world.biomesEnabled = false
         for _ in 0..<50 {
@@ -651,46 +651,46 @@ struct SwiftolutionTests {
     }
 
     @Test func creatureCannotMoveIntoWater() {
-        // Kreatur startet neben einer Wasserkachel und steuert direkt hinein → Bewegung blockiert.
+        // The creature starts next to a water tile and steers straight into it, so movement is blocked.
         let world = World(size: CGSize(width: 800, height: 600))
         world.biomesEnabled = true
-        // Eine passierbare Nachbarkachel einer Wasserkachel suchen und Kreatur dort platzieren,
-        // Blickrichtung auf das Wasser.
+        // Find a passable tile adjacent to a water tile, place the creature there and point it
+        // at the water.
         let map = world.biomeMap
         var placed = false
         outer: for row in 0..<map.rows {
             for col in 0..<map.cols where map.biomeAt(col: col, row: row) == .water {
-                // rechter Nachbar
+                // the right-hand neighbour
                 let nCol = col + 1
                 guard nCol < map.cols, map.biomeAt(col: nCol, row: row).isPassable else { continue }
                 let start = CGPoint(x: (CGFloat(nCol) + 0.5) * map.tileSize,
                                     y: (CGFloat(row) + 0.5) * map.tileSize)
                 var dna = DNA.random()
-                dna.genes[0] = 1.0            // maximale Geschwindigkeit
+                dna.genes[0] = 1.0            // maximum speed
                 let creature = Creature(dna: dna, position: start)
-                creature.heading = .pi       // nach links (−x) → in Richtung Wasserkachel
-                // Volle Geschwindigkeit, keine Drehung (apply() frischt den Heading-Cache selbst auf)
+                creature.heading = .pi       // to the left (-x), toward the water tile
+                // Full speed, no turning (apply() refreshes the heading cache itself)
                 let action = ActionOutput(fromArray: [0.5, 1.0, 0.0, 0.0, 0.0, 0.0])
-                // So weit bewegen, dass die Zielposition in der Wasserkachel läge
+                // Move far enough that the target position would land inside the water tile
                 for _ in 0..<200 { creature.apply(output: action, in: world) }
-                // Kreatur darf nie auf einer Wasserkachel stehen.
+                // The creature must never end up standing on a water tile.
                 #expect(world.biome(at: creature.position).isPassable)
                 placed = true
                 break outer
             }
         }
-        #expect(placed)  // Testfall wurde tatsächlich aufgebaut
+        #expect(placed)  // the test case was actually constructed
     }
 
     @Test func biomeWorldNeverPlacesLifeOnWater() {
-        // Integration: volle Tick-Schleife mit aktiven Biomen. Kernel-Invariante über die
-        // gesamte Simulation — weder lebende Kreaturen noch Pflanzen dürfen je im Wasser landen
-        // (Spawns meiden Wasser, Bewegung wird blockiert, Wachstum lehnt Wasser ab).
+        // Integration: the full tick loop with biomes on. A core invariant across the whole
+        // simulation — neither living creatures nor plants may ever end up in water (spawns
+        // avoid it, movement is blocked, and growth rejects it).
         let world = World(size: CGSize(width: 1600, height: 1200))
         world.biomesEnabled = true
         world.populate(creatures: 120, food: world.maxFood)
 
-        // Startzustand
+        // The initial state
         for c in world.creatures {
             #expect(world.biomeMap.biome(at: c.position).isPassable)
         }
@@ -700,29 +700,30 @@ struct SwiftolutionTests {
 
         for _ in 0..<400 { world.tick() }
 
-        // Nach 400 Ticks weiterhin verletzungsfrei
+        // Still unviolated after 400 ticks
         for c in world.creatures {
             #expect(world.biomeMap.biome(at: c.position).isPassable)
         }
         for f in world.foodSources where f.type == .plant {
             #expect(world.biomeMap.biome(at: f.position) != .water)
         }
-        // Die Simulation ist gelaufen (Ticks gezählt, keine Endlosschleife/kein Crash).
+        // The simulation actually ran: ticks were counted, with no infinite loop and no crash.
         #expect(world.tickCount == 400)
     }
 
-    // MARK: - Biom: Richtungswahrnehmung
+    // MARK: - Biomes: directional perception
 
     @Test func terrainBearingPointsLeftRightToVisibleBiomes() {
-        // Vertikale 1×3-Karte: unten Wasser, Mitte Wiese, oben Sumpf. Beobachter in der Wiese-Mitte,
-        // Blick nach +x. Damit liegt „oben" (+y) rechts, „unten" (−y) links (Konvention von angleToFood).
+        // A vertical 1x3 map: water at the bottom, grassland in the middle, wetland on top. The
+        // observer stands in the middle of the grassland looking along +x, which puts "up" (+y)
+        // on the right and "down" (-y) on the left (the angleToFood convention).
         let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
         let b = map.directionalBearings(observerX: 50, observerY: 150,
                                         headingCos: 1, headingSin: 0,
                                         sightRadius: 250, sightAngle: 2 * .pi)
-        #expect(b.wetland > 0.05)    // Sumpf oben → rechts (+)
-        #expect(b.water   < -0.05)   // Wasser unten → links (−)
-        #expect(b.forest == 0)       // nicht vorhanden
+        #expect(b.wetland > 0.05)    // wetland above -> to the right (+)
+        #expect(b.water   < -0.05)   // water below -> to the left (-)
+        #expect(b.forest == 0)       // not present on this map
         #expect(b.desert == 0)
         for v in [b.grassland, b.forest, b.desert, b.wetland, b.water] {
             #expect(v >= -1 && v <= 1)
@@ -730,15 +731,16 @@ struct SwiftolutionTests {
     }
 
     @Test func terrainPerceptionWorksAtRealisticSightRadii() {
-        // Regression: reale Sichtradien liegen bei ~20–160 px, das Kachelraster bei 200 px.
-        // Die frühere Kachelmittelpunkt-Abtastung fand in diesem Maßstab nie eine Kachel
-        // (nicht mal die eigene) und lieferte konstant 0 — die Wahrnehmung war praktisch tot.
-        // Karte: links Wasser (x < 200), rechts Wiese. Beobachter dicht an der Grenze, 60 px Sicht.
+        // Regression: real sight radii are ~20-160 px while the tile raster is 200 px. At that
+        // scale the old tile-centre sampling never found a tile at all — not even the creature's
+        // own — and returned a constant 0, leaving the sense effectively dead.
+        // Map: water on the left (x < 200), grassland on the right. The observer stands close to
+        // the border with 60 px of sight.
         let map = BiomeMap(tiles: [.water, .grassland], cols: 2, rows: 1, tileSize: 200)
         let b = map.directionalBearings(observerX: 210, observerY: 100,
-                                        headingCos: 0, headingSin: 1,   // Blick nach +y
+                                        headingCos: 0, headingSin: 1,   // looking along +y
                                         sightRadius: 60, sightAngle: 2 * .pi)
-        // Wasser liegt bei −x, also relativ zur Blickrichtung rechts (+) → wird wahrgenommen.
+        // The water lies at -x, which is to the right (+) of the heading, so it is perceived.
         #expect(b.water > 0)
         #expect(b.water <= 1)
     }
@@ -750,19 +752,19 @@ struct SwiftolutionTests {
     }
 
     @Test func terrainSightReachesBeyondFoodSight() {
-        // Landschaft ist auf größerer Skala sichtbar als ein einzelnes Futterobjekt.
-        // Karte: Wasser links (x < 200), Wiese rechts. Beobachter 150 px von der Grenze,
-        // Blick nach +y → Wasser liegt seitlich (gibt also ein Richtungssignal).
+        // Landscape is visible on a larger scale than a single item of food.
+        // Map: water on the left (x < 200), grassland on the right. The observer is 150 px from
+        // the border looking along +y, so the water is off to one side and does give a bearing.
         let map = BiomeMap(tiles: [.water, .grassland], cols: 2, rows: 1, tileSize: 200)
         let foodSight: Float = 60
 
-        // Mit bloßer Futter-Sichtweite bliebe das Wasser unsichtbar …
+        // At plain food sight range the water would stay invisible ...
         let near = map.directionalBearings(observerX: 350, observerY: 100,
                                            headingCos: 0, headingSin: 1,
                                            sightRadius: foodSight, sightAngle: 2 * .pi)
         #expect(near.water == 0)
 
-        // … mit dem Landschaftshorizont (4×) wird es wahrgenommen.
+        // ... but at the landscape horizon (4x) it is perceived.
         let far = map.directionalBearings(observerX: 350, observerY: 100,
                                           headingCos: 0, headingSin: 1,
                                           sightRadius: foodSight * Float(Creature.terrainSightFactor),
@@ -771,8 +773,8 @@ struct SwiftolutionTests {
     }
 
     @Test func terrainBearingIgnoresTerrainOutsideFOV() {
-        // Schmaler 60°-Kegel nach +x mit kurzer Sicht: der Kegel bleibt vollständig in der
-        // Wiese-Kachel → Wasser (unten) und Sumpf (oben) sind außerhalb → 0.
+        // A narrow 60 degree cone along +x with short sight: the cone stays entirely inside the
+        // grassland tile, so the water below and the wetland above fall outside it and read 0.
         let map = BiomeMap(tiles: [.water, .grassland, .wetland], cols: 1, rows: 3, tileSize: 100)
         let b = map.directionalBearings(observerX: 50, observerY: 150,
                                         headingCos: 1, headingSin: 0,
@@ -782,15 +784,15 @@ struct SwiftolutionTests {
     }
 
     @Test func terrainBearingsCancelOnUniformTerrain() {
-        // Gleichförmiges Terrain rundum → kein Richtungssignal (Beiträge heben sich auf).
-        // Anders als früher heißt "kein Signal" nicht mehr "blind": die Kreatur tastet ihre
-        // Umgebung sehr wohl ab, sie ist nur in jede Richtung gleich.
+        // Uniform terrain all around gives no directional signal, since the contributions
+        // cancel. Unlike before, "no signal" no longer means "blind": the creature does sample
+        // its surroundings, they simply look the same in every direction.
         let map = BiomeMap(tiles: [.grassland], cols: 1, rows: 1, tileSize: 400)
         let b = map.directionalBearings(observerX: 200, observerY: 200,
                                         headingCos: 1, headingSin: 0,
                                         sightRadius: 100, sightAngle: 2 * .pi)
         #expect(abs(b.grassland) < 0.001)
-        #expect(b.water == 0)   // nicht vorhanden
+        #expect(b.water == 0)   // not present on this map
     }
 
     @Test func terrainBearingsStayInRangeOnRandomMap() {
@@ -809,13 +811,13 @@ struct SwiftolutionTests {
         }
     }
 
-    // MARK: - Todesursachen & Ereignisstrom
+    // MARK: - Causes of death & the event stream
 
     @Test func deathByStarvationClassified() {
         let world = World(size: CGSize(width: 200, height: 200))
-        var dna = DNA.random(); dna.genes[4] = 1.0   // maxAge groß → kein Alterstod
+        var dna = DNA.random(); dna.genes[4] = 1.0   // a large maxAge, so no death from old age
         let c = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        c.energy = -1                                // Energie-Tod, kein Angreifer
+        c.energy = -1                                // an energy death with no attacker
         world.creatures = [c]
         world.checkDeaths()
         #expect(world.deathsByStarvation == 1)
@@ -829,8 +831,8 @@ struct SwiftolutionTests {
         let victim = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
         let killer = Creature(dna: DNA.random(), position: CGPoint(x: 100, y: 100))
         victim.energy = -1
-        victim.lastAttacker = killer                 // diesen Tick angegriffen → Prädation
-        world.creatures = [victim]                   // killer muss nicht in der Liste sein
+        victim.lastAttacker = killer                 // attacked this tick -> predation
+        world.creatures = [victim]                   // the killer need not be in the list
         world.checkDeaths()
         #expect(world.deathsByPredation == 1)
         #expect(world.deathsByStarvation == 0)
@@ -840,8 +842,8 @@ struct SwiftolutionTests {
         let world = World(size: CGSize(width: 200, height: 200))
         var dna = DNA.random(); dna.genes[4] = 0.001 // maxAge = 1
         let c = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
-        c.age = 100_000                              // ageRatio riesig → Alterswurf feuert sicher
-        c.energy = 50                                // lebendig → kein Energie-Tod
+        c.age = 100_000                              // a huge ageRatio, so the age roll is certain to fire
+        c.energy = 50                                // alive, so this is not an energy death
         world.creatures = [c]
         world.checkDeaths()
         #expect(world.deathsByOldAge == 1)
@@ -863,12 +865,12 @@ struct SwiftolutionTests {
 
     @Test func eventRecordingOffKeepsBufferEmpty() {
         let world = World(size: CGSize(width: 200, height: 200))
-        // eventRecording bleibt false (Default)
+        // eventRecording stays false (the default)
         var dna = DNA.random(); dna.genes[4] = 1.0
         let c = Creature(dna: dna, position: .zero); c.energy = -1
         world.creatures = [c]
         world.checkDeaths()
         #expect(world.events.isEmpty)
-        #expect(world.deathsByStarvation == 1)   // Zählung läuft dennoch
+        #expect(world.deathsByStarvation == 1)   // the counting still happens
     }
 }

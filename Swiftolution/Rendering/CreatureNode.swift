@@ -2,12 +2,12 @@ import SpriteKit
 
 final class CreatureNode: SKNode {
 
-    // MARK: - Kinder
+    // MARK: - Children
 
-    private let bodySprite:    SKSpriteNode   // vorab gerendert → keine SKShapeNode-Rasterisierung pro Frame
-    private let directionLine: SKSpriteNode   // einfaches Rechteck
-    private let sightNode:     SKShapeNode    // nur bei Selektion sichtbar
-    private let selectionRing: SKShapeNode    // nur bei Selektion sichtbar
+    private let bodySprite:    SKSpriteNode   // pre-rendered, so no SKShapeNode rasterization per frame
+    private let directionLine: SKSpriteNode   // a plain rectangle
+    private let sightNode:     SKShapeNode    // only visible while selected
+    private let selectionRing: SKShapeNode    // only visible while selected
     let radius: CGFloat
 
     // MARK: - Init
@@ -17,19 +17,19 @@ final class CreatureNode: SKNode {
         self.radius = radius
         let aggr   = CGFloat(creature.dna.aggression)
 
-        // Körperfarbe aus DNA + Aggressions-Tint (grün → rot)
+        // Body color from DNA plus an aggression tint (green -> red)
         let dnaColor  = NSColor(red: CGFloat(creature.dna.red),
                                 green: CGFloat(creature.dna.green),
                                 blue: CGFloat(creature.dna.blue), alpha: 1)
         let tintColor = aggr < 0.5
-            ? NSColor(red: 0.05, green: 0.85, blue: 0.2,  alpha: 1)   // Pflanzenfresser: grün
-            : NSColor(red: 0.90, green: 0.05, blue: 0.05, alpha: 1)   // Fleischfresser: rot
+            ? NSColor(red: 0.05, green: 0.85, blue: 0.2,  alpha: 1)   // herbivore: green
+            : NSColor(red: 0.90, green: 0.05, blue: 0.05, alpha: 1)   // carnivore: red
         let tintStrength = min(abs(aggr - 0.5) * 1.6, 0.55)
         let bodyColor = dnaColor.blended(withFraction: tintStrength, of: tintColor) ?? dnaColor
 
-        // Form: viele abgerundete Ecken (≈ Kreis) → wenige spitze Zacken (→ Dreieck)
-        // Anzahl Zacken: 8 bei aggr=0, 3 bei aggr=1
-        // Innenradius:  0.88·r bei aggr=0 (kaum Einbuchtung), 0.22·r bei aggr=1 (sehr spitzig)
+        // Shape: many rounded corners (nearly a circle) shading into few sharp spikes (a
+        // triangle). Spike count: 8 at aggr=0, 3 at aggr=1.
+        // Inner radius: 0.88r at aggr=0 (barely indented), 0.22r at aggr=1 (very spiky).
         let numSpikes = max(3, Int((8.0 - aggr * 5.0).rounded()))
         let innerR    = radius * (0.88 - aggr * 0.66)
         let bodyPath  = CreatureNode.spikePath(outerRadius: radius, innerRadius: innerR, spikes: numSpikes)
@@ -44,13 +44,13 @@ final class CreatureNode: SKNode {
                                                  lineWidth: lineWidth,
                                                  radius: radius)
 
-        // Richtungslinie als einfaches Rechteck — kein Pfad-Rasterizer nötig
+        // The heading line as a plain rectangle — no path rasterizer needed
         let lineAlpha = max(0, 0.7 - aggr * 1.4)
         directionLine = SKSpriteNode(color: NSColor.white.withAlphaComponent(lineAlpha),
                                      size: CGSize(width: radius + 5, height: 1.5))
         directionLine.anchorPoint = CGPoint(x: 0, y: 0.5)
 
-        // Sichtkegel — nur bei Selektion sichtbar; Pfad wird in sync() aktualisiert
+        // The sight cone — only visible while selected; its path is refreshed in sync()
         sightNode             = SKShapeNode(path: CreatureNode.fovPath(radius: creature.sightRadius,
                                                                         angle: creature.sightAngle))
         sightNode.fillColor   = bodyColor.withAlphaComponent(0.07)
@@ -95,9 +95,9 @@ final class CreatureNode: SKNode {
         sightNode.isHidden = !visible
     }
 
-    // MARK: - Texture-Generator
+    // MARK: - Texture generation
 
-    // Rendert den Körperpfad einmalig in eine GPU-Textur — ersetzt per-Frame SKShapeNode-Rasterisierung.
+    // Renders the body path once into a GPU texture, replacing per-frame SKShapeNode rasterization.
     private static func makeBodySprite(path: CGPath, fill: NSColor, stroke: NSColor,
                                        lineWidth: CGFloat, radius: CGFloat) -> SKSpriteNode {
         let margin  = lineWidth / 2 + 1
@@ -124,11 +124,11 @@ final class CreatureNode: SKNode {
         return SKSpriteNode(texture: SKTexture(cgImage: img), size: size)
     }
 
-    // MARK: - Form-Generator
+    // MARK: - Shape generation
 
-    // Erzeugt den Sichtkegel-Pfad: Tortenstück entlang der +X-Achse (Blickrichtung).
-    // Das Elternteil rotiert per zRotation=heading, daher zeigt der Kegel immer nach vorne.
-    // Bei ≥ 360° wird ein Vollkreis gezeichnet.
+    // Builds the sight cone path: a pie slice along the +X axis (the heading). The parent node
+    // is rotated by zRotation=heading, so the cone always points forward. At 360 degrees or more
+    // a full circle is drawn instead.
     static func fovPath(radius: CGFloat, angle: CGFloat) -> CGPath {
         let path = CGMutablePath()
         if angle >= 2 * .pi * 0.995 {
@@ -136,7 +136,7 @@ final class CreatureNode: SKNode {
         } else {
             let half = angle / 2
             path.move(to: .zero)
-            // Bogen von -half bis +half um die +X-Achse (= Blickrichtung bei zRotation=0)
+            // An arc from -half to +half around the +X axis (the heading at zRotation=0)
             path.addArc(center: .zero, radius: radius,
                         startAngle: -half, endAngle: half, clockwise: false)
             path.closeSubpath()
@@ -144,10 +144,10 @@ final class CreatureNode: SKNode {
         return path
     }
 
-    // Erzeugt einen Stern-Pfad mit `spikes` Zacken.
-    // Erster äußerer Punkt bei Winkel 0 (→ rechts), damit die Spitze mit zRotation=heading zeigt.
-    // Bei vielen Zacken mit kleiner Einbuchtung sieht es wie ein Kreis aus.
-    // Bei wenigen Zacken mit großer Einbuchtung entsteht ein klarer Stern/Dreieck.
+    // Builds a star path with `spikes` points.
+    // The first outer point sits at angle 0 (pointing right) so the tip follows zRotation=heading.
+    // Many spikes with a shallow indent read as a circle; few spikes with a deep indent give a
+    // distinct star or triangle.
     private static func spikePath(outerRadius: CGFloat, innerRadius: CGFloat, spikes: Int) -> CGPath {
         let path = CGMutablePath()
         let step = (2 * CGFloat.pi) / CGFloat(spikes)

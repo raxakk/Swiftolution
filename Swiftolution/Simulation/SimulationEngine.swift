@@ -4,7 +4,7 @@ import CoreGraphics
 
 final class SimulationEngine: ObservableObject {
 
-    // MARK: - Öffentliche Properties
+    // MARK: - Public properties
 
     @Published var stats              = SimulationStats()
     @Published var config             = SimulationConfig() { didSet { syncConfigToWorld() } }
@@ -22,7 +22,7 @@ final class SimulationEngine: ObservableObject {
     private var speedMultiplier: Double = 1.0
     private var tickAccumulator: Double = 0
 
-    // Simulation läuft auf einem eigenen Thread — Main bleibt für UI/Rendering frei
+    // The simulation runs on its own thread, leaving main free for UI and rendering
     private let simQueue = DispatchQueue(label: "swiftolution.simulation", qos: .userInteractive)
     private var simBusy  = false
 
@@ -36,7 +36,7 @@ final class SimulationEngine: ObservableObject {
         startTimer()
     }
 
-    // MARK: - Steuerung
+    // MARK: - Control
 
     func togglePause() {
         isPaused.toggle()
@@ -57,7 +57,7 @@ final class SimulationEngine: ObservableObject {
     func selectCreature(id: UUID?) {
         selectedCreatureID       = id
         scene.selectedCreatureID = id
-        // Kein Zugriff auf world.creatures während simQueue läuft — updateStats() holt es nach
+        // Do not touch world.creatures while simQueue is running — updateStats() catches up later
         guard !simBusy else { return }
         refreshInspection()
     }
@@ -79,16 +79,17 @@ final class SimulationEngine: ObservableObject {
         tickAccumulator = 0
     }
 
-    // MARK: - Config → World synchronisieren
+    // MARK: - Syncing config into the world
 
     private func syncConfigToWorld() {
-        // Nahrung und Population skalieren mit der Wurzel der Weltfläche relativ zur Referenzgröße (800×600).
-        // Wurzel statt linearer Skala: doppelte Fläche → ~1.4× mehr Kapazität (nicht 2×).
+        // Food and population scale with the square root of the world area relative to the
+        // reference size (800x600). Square root rather than linear: twice the area gives ~1.4x
+        // the capacity, not 2x.
         let area      = Double(world.size.width * world.size.height)
         let refArea   = 800.0 * 600.0
         let scale     = sqrt(area / refArea)
         world.maxFood          = Int(Double(config.foodCapacity) * scale)
-        // Populationsgrenze skaliert mit Weltgröße, ist aber mindestens so groß wie die Startzahl
+        // The population ceiling scales with world size but never falls below the starting count
         world.maxPopulation    = max(Int(300.0 * scale), config.initialCreatures)
         world.foodGrowthRate   = config.foodGrowthRate
         world.mutationRate     = config.mutationRate
@@ -110,23 +111,23 @@ final class SimulationEngine: ObservableObject {
 
     private func startTimer() {
         tickAccumulator = 0
-        // Immer mit Display-Rate (60 fps) feuern — Simulations-Ticks werden pro Frame gebatcht.
+        // Always fire at the display rate (60 fps); simulation ticks are batched per frame.
         timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
     }
 
-    // Deckel für den aufholbaren Rückstand (≈2 Frames bei 10×). Ohne Deckel würde der
-    // Rückstand bei echter Überlast unbegrenzt wachsen, die Batches immer größer werden
-    // und die UI einfrieren — der Multiplikator bleibt dann eben unerreichbar.
+    // Ceiling on the backlog that can be caught up (~2 frames at 10x). Without it, a genuinely
+    // overloaded run would grow the backlog without bound, make the batches ever larger and
+    // freeze the UI — better that the multiplier simply stays out of reach.
     private static let maxTickBacklog: Double = 10
 
     private func tick() {
         guard !isPaused else { return }
-        // Budget auch dann akkumulieren, wenn die Sim noch rechnet: sonst geht das
-        // Tick-Budget jedes Frames verloren, in dem simBusy gesetzt war, und die Sim
-        // legt zwischen den Batches Pausen ein statt zu rechnen — sie lief dadurch
-        // dauerhaft langsamer als der eingestellte Multiplikator.
+        // Accumulate the budget even while the simulation is still computing: otherwise the
+        // tick budget of every frame with simBusy set is lost, and the simulation idles between
+        // batches instead of working — which made it run persistently slower than the
+        // configured multiplier.
         tickAccumulator += 30.0 * speedMultiplier / 60.0
         tickAccumulator = min(tickAccumulator, SimulationEngine.maxTickBacklog)
         guard !simBusy else { return }
@@ -151,7 +152,7 @@ final class SimulationEngine: ObservableObject {
         let creatures = world.creatures
         let n         = Double(creatures.count)
 
-        // Ein Pass über alle Kreaturen statt 8 filter/map-Durchläufe
+        // A single pass over all creatures instead of 8 filter/map traversals
         var herbivores = 0, omnivores = 0, carnivores = 0
         var aggressionSum = 0.0, ageSum = 0.0, energySum = 0.0
         var oldestAge = 0
@@ -166,7 +167,7 @@ final class SimulationEngine: ObservableObject {
             if c.age > oldestAge { oldestAge = c.age }
         }
 
-        // Lokal aufbauen, einmal zuweisen — @Published feuert so nur 1× pro Frame
+        // Build locally and assign once, so @Published fires only a single time per frame
         var s = SimulationStats()
         s.tickCount     = world.tickCount
         s.generation    = world.generation
@@ -191,11 +192,11 @@ final class SimulationEngine: ObservableObject {
     }
 }
 
-// MARK: - Konfiguration
+// MARK: - Configuration
 
 struct SimulationConfig {
-    // Sofort wirksam (live)
-    var foodCapacity:     Int    = 500     // Referenz für 800×600; skaliert mit √(Weltfläche)
+    // Takes effect immediately (live)
+    var foodCapacity:     Int    = 500     // reference for 800x600; scales with sqrt(world area)
     var foodGrowthRate:   Double = 0.05
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
@@ -203,60 +204,60 @@ struct SimulationConfig {
     var minSpawnThreshold:       Int   = 5
     var latitudeGradientEnabled: Bool  = false
 
-    // Assortative Paarung / Artbildung
+    // Assortative mating / speciation
     var speciationEnabled:   Bool  = true
     var speciationThreshold: Float = 0.45
 
-    // Pflanzengift: Anreiz für Fleischfresser, sich von Pflanzen zu spezialisieren.
-    // Erst oberhalb der Schwelle zahlt ein Fleischfresser eine Giftlast beim Pflanzenfressen
-    // (das Aas-Trittstein für Allesfresser darunter bleibt unberührt).
+    // Plant toxin: the incentive for carnivores to specialize away from plants. Only above the
+    // threshold does a carnivore take on a toxin load when eating plants; the carrion stepping
+    // stone for omnivores below it is left untouched.
     var plantToxinEnabled:   Bool  = true
-    var plantToxinFactor:    Float = 0.60   // Giftstärke; 0 = aus. 0.6 → reiner Carnivore verliert an Pflanzen
-    var plantToxinThreshold: Float = 0.50   // ab dieser aggression greift die Giftlast
+    var plantToxinFactor:    Float = 0.60   // toxin strength; 0 = off. At 0.6 a pure carnivore loses energy on plants
+    var plantToxinThreshold: Float = 0.50   // the aggression above which the toxin load applies
 
-    // Jahreszeiten (sofort wirksam)
+    // Seasons (take effect immediately)
     var seasonEnabled:   Bool  = false
-    var seasonLength:    Int   = 3000   // Ticks pro Jahr
-    var seasonAmplitude: Float = 0.70   // 0 = kein Effekt, 1 = Winter → 0% Wachstum
+    var seasonLength:    Int   = 3000   // ticks per year
+    var seasonAmplitude: Float = 0.70   // 0 = no effect, 1 = winter halts growth entirely
 
-    // Biome: Terrain wird bei Welterzeugung generiert → voller Effekt (Karte, Spawns,
-    // Darstellung) erst nach Neustart. Bei aktiver Karte formen Wasserzonen Barrieren.
+    // Biomes: terrain is generated when the world is created, so the full effect (map, spawns,
+    // rendering) only appears after a restart. With a map in place, water forms barriers.
     var biomesEnabled: Bool = false
 
-    // Erst beim Neustart wirksam
+    // Only takes effect on restart
     var worldWidth:       Int = 2400
     var worldHeight:      Int = 1800
     var initialCreatures: Int = 80
-    // Startnahrung = immer world.maxFood — Welt startet vollständig bepflanzt
+    // Starting food is always world.maxFood — the world begins fully planted
 }
 
-// MARK: - Kreatur-Snapshot (für Inspektion)
+// MARK: - Creature snapshot (for the inspector)
 
 struct CreatureSnapshot {
     let age:              Int
     let maxAge:           Int
     let energyRatio:      Float
     let bodyMassRatio:    Float   // bodyMass / maxBodyMass
-    let senescence:       Float   // [0,1] — 0 = jung, >0 = Altersabbau aktiv
+    let senescence:       Float   // [0,1] — 0 = young, >0 = age-related decline has set in
     let isHerbivore:      Bool
-    let biomeName:        String?  // aktuelles Biom (nil wenn Biome deaktiviert)
+    let biomeName:        String?  // the current biome (nil when biomes are disabled)
     // DNA
     let size:             Float
     let speed:            Float
     let aggression:       Float
-    let sightRadiusGene:  Float   // Rohwert [0,1]
-    let sightRadiusPx:    Float   // berechneter Radius in Pixeln (inkl. Seneszenz)
-    let sightAngleGene:   Float   // Rohwert [0,1]
-    let sightAngleDeg:    Int     // berechneter Winkel in Grad
-    let turnRateGene:     Float   // Rohwert [0,1]
-    let turnRateDeg:      Float   // berechneter Wert in Grad/Tick
-    let maxAgeGene:       Float   // [0,1] — zeigt Lebensstrategien-Pol
+    let sightRadiusGene:  Float   // raw value [0,1]
+    let sightRadiusPx:    Float   // resulting radius in pixels (senescence included)
+    let sightAngleGene:   Float   // raw value [0,1]
+    let sightAngleDeg:    Int     // resulting angle in degrees
+    let turnRateGene:     Float   // raw value [0,1]
+    let turnRateDeg:      Float   // resulting value in degrees per tick
+    let maxAgeGene:       Float   // [0,1] — shows which pole of the life strategy it sits on
     let reproThreshold:   Float
     let litterSize:       Int
     let brainSize:        Float
     let hiddenCount:      Int
-    let olfaction:        Float   // Geruchssinn-Gen [0,1]
-    // Aktuelles NN-Verhalten
+    let olfaction:        Float   // the olfaction gene [0,1]
+    // Current network behaviour
     let actionSpeed:      Float
     let actionReproduce:  Float
     let actionAttack:     Float
@@ -295,15 +296,15 @@ struct CreatureSnapshot {
     }
 }
 
-// MARK: - Statistiken
+// MARK: - Statistics
 
 struct SimulationStats {
     var tickCount:     Int    = 0
     var generation:    Int    = 0
     var population:    Int    = 0
-    // Drei-Klassen-Einteilung nach Aggression (kontinuierlich, keine harte Grenze)
-    var herbivores:    Int    = 0   // aggression ≤ 0.33
-    var omnivores:     Int    = 0   // 0.33 < aggression ≤ 0.67
+    // A three-way split by aggression (the trait itself is continuous, there is no hard line)
+    var herbivores:    Int    = 0   // aggression <= 0.33
+    var omnivores:     Int    = 0   // 0.33 < aggression <= 0.67
     var carnivores:    Int    = 0   // aggression > 0.67
     var avgAggression: Double = 0
     var totalBirths:   Int    = 0
@@ -316,5 +317,5 @@ struct SimulationStats {
     var averageEnergy: Double = 0
     var currentSeason: String = "–"
     var seasonFactor:  Double = 1.0
-    var speciesCount:  Int    = 0   // distinkte Arten (0 = Speziation aus)
+    var speciesCount:  Int    = 0   // distinct species (0 = speciation is off)
 }

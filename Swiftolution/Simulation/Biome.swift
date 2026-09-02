@@ -1,20 +1,20 @@
 import Foundation
 import CoreGraphics
 
-// MARK: - Biom
+// MARK: - Biome
 
-// Ein Biom ist eine ökologische Zone mit eigenem Charakter. Jedes Biom moduliert
-// vier Dinge: wie viel Pflanzennahrung dort wächst (fertility × growthFactor),
-// wie schnell man sich bewegt (speedFactor), wie weit man sieht (sightFactor —
-// Deckung) und ob man es überhaupt betreten kann (isPassable — Wasser ist eine
-// Barriere für geografische Isolation). Die Werte sind bewusst gegenläufig, damit
-// kein Biom in allem gut ist und verschiedene Nischen verschiedene Phänotypen belohnen.
+// A biome is an ecological zone with a character of its own. Each one modulates
+// four things: how much plant food grows there (fertility x growthFactor), how
+// fast you move (speedFactor), how far you see (sightFactor — cover), and whether
+// you can enter it at all (isPassable — water is a barrier for geographic
+// isolation). The values deliberately pull against each other so that no biome is
+// good at everything and different niches reward different phenotypes.
 enum Biome: Int, CaseIterable {
-    case grassland   // Wiese  — Standard: fruchtbar, offen, leicht begehbar
-    case forest      // Wald   — mäßig fruchtbar, viel Deckung (kurze Sicht)
-    case desert      // Wüste  — karg, offen (weite Sicht), zähe Fortbewegung
-    case wetland     // Sumpf  — sehr fruchtbar, aber langsam zu durchqueren
-    case water       // Wasser — keine Nahrung, unpassierbar (Barriere)
+    case grassland   // the default: fertile, open, easy to cross
+    case forest      // moderately fertile, plenty of cover (short sight)
+    case desert      // barren, open (long sight), heavy going
+    case wetland     // very fertile, but slow to traverse
+    case water       // no food, impassable (a barrier)
 
     var name: String {
         switch self {
@@ -26,7 +26,7 @@ enum Biome: Int, CaseIterable {
         }
     }
 
-    // Pflanzen-Tragfähigkeit relativ zur Wiese. 0 = keine Pflanzen (Wasser).
+    // Plant carrying capacity relative to grassland. 0 = no plants (water).
     var fertility: Float {
         switch self {
         case .grassland: return 1.00
@@ -37,7 +37,7 @@ enum Biome: Int, CaseIterable {
         }
     }
 
-    // Multiplikator auf die Pflanzenwachstumsrate.
+    // Multiplier on the plant growth rate.
     var growthFactor: Float {
         switch self {
         case .grassland: return 1.20
@@ -48,18 +48,18 @@ enum Biome: Int, CaseIterable {
         }
     }
 
-    // Bewegungsfaktor: <1 verlangsamt (Sand, Morast). Grasland = neutral.
+    // Movement factor: <1 slows you down (sand, mire). Grassland is neutral.
     var speedFactor: Float {
         switch self {
         case .grassland: return 1.00
         case .forest:    return 0.85
         case .desert:    return 0.80
         case .wetland:   return 0.55
-        case .water:     return 0.30   // relevant nur als Sensorwert — Wasser ist ohnehin unpassierbar
+        case .water:     return 0.30   // only ever read as a sensor value — water is impassable anyway
         }
     }
 
-    // Sichtfaktor: <1 = Deckung (Wald verkürzt die Sicht), >1 = freies Blickfeld (Wüste).
+    // Sight factor: <1 = cover (forest shortens sight), >1 = clear view (desert).
     var sightFactor: Float {
         switch self {
         case .grassland: return 1.00
@@ -70,12 +70,12 @@ enum Biome: Int, CaseIterable {
         }
     }
 
-    // Wasser blockiert Bewegung → trennt Populationen → allopatrische Artbildung.
+    // Water blocks movement -> splits populations -> allopatric speciation.
     var isPassable: Bool { self != .water }
 
-    static let maxFertility: Float = 1.30   // Sumpf — für die Normierung der Sensorwerte
+    static let maxFertility: Float = 1.30   // wetland — used to normalize sensor values
 
-    // Darstellungsfarbe (dunkel gehalten, damit helle Kreaturen sich abheben).
+    // Display color (kept dark so that bright creatures stand out against it).
     var color: (r: Double, g: Double, b: Double) {
         switch self {
         case .grassland: return (0.20, 0.35, 0.16)
@@ -87,19 +87,19 @@ enum Biome: Int, CaseIterable {
     }
 }
 
-// MARK: - Biom-Karte
+// MARK: - Biome map
 
-// Statische Aufteilung der Welt in Biom-Kacheln, einmal pro Welt erzeugt.
-// Erzeugung per Voronoi über zufällige Saatpunkte: jede Kachel bekommt das Biom
-// des nächstgelegenen Saatpunkts (toroidale Distanz, passend zur Wrap-around-Welt).
-// Ergebnis sind zusammenhängende Regionen statt Kachel-Rauschen. Mindestens zwei
-// Wasser-Saaten garantieren echte Barrieren.
+// A static partition of the world into biome tiles, generated once per world.
+// Generation is a Voronoi diagram over random seed points: every tile takes the
+// biome of its nearest seed (toroidal distance, matching the wrap-around world).
+// The result is contiguous regions rather than per-tile noise. At least two water
+// seeds are guaranteed, so there are always real barriers.
 struct BiomeMap {
 
     let cols: Int
     let rows: Int
     let tileSize: CGFloat
-    private let tiles: [Biome]   // row-major, cols × rows
+    private let tiles: [Biome]   // row-major, cols x rows
 
     init(worldSize: CGSize, tileSize: CGFloat = 200) {
         self.tileSize = tileSize
@@ -111,16 +111,16 @@ struct BiomeMap {
                                        worldSize: worldSize, tileSize: tileSize)
     }
 
-    // Explizite Kacheln (Tests / Custom-Karten).
+    // Explicit tiles (tests / custom maps).
     init(tiles: [Biome], cols: Int, rows: Int, tileSize: CGFloat) {
-        precondition(tiles.count == cols * rows, "tiles.count muss cols × rows sein")
+        precondition(tiles.count == cols * rows, "tiles.count must be cols x rows")
         self.tiles    = tiles
         self.cols     = cols
         self.rows     = rows
         self.tileSize = tileSize
     }
 
-    // MARK: Abfragen
+    // MARK: Queries
 
     @inline(__always)
     func biome(at point: CGPoint) -> Biome {
@@ -135,23 +135,25 @@ struct BiomeMap {
 
     func isPassable(_ point: CGPoint) -> Bool { biome(at: point).isPassable }
 
-    // MARK: Richtungswahrnehmung
+    // MARK: Directional perception
 
-    // Richtungsaufgelöste Terrain-Wahrnehmung im Sichtkegel: für jedes Biom ein Wert in
-    // [-1, 1] — Vorzeichen = Richtung (−1 links … +1 rechts, relativ zur Blickrichtung),
-    // Betrag = wie stark dieses Biom im Blickfeld liegt. Nähere Proben zählen mehr; die Summe
-    // wird über alle Proben normiert, sodass die Werte gebunden bleiben. Gleichförmiges Terrain
-    // rundum → ~0 (die Beiträge heben sich auf), was korrekt ist: kein Richtungssignal.
+    // Direction-resolved terrain perception across the sight cone: one value in [-1, 1]
+    // per biome — the sign is the direction (-1 left ... +1 right, relative to the heading)
+    // and the magnitude is how strongly that biome sits in the field of view. Nearer samples
+    // count for more; the sum is normalized over all samples so the values stay bounded.
+    // Uniform terrain all around yields ~0 (the contributions cancel), which is correct:
+    // there is no directional signal to report.
     //
-    // Abgetastet wird der EIGENE Sichtkegel (Polarraster: Distanzringe × Winkel), nicht das
-    // Kachelraster. Grund: Sichtradien liegen real bei ~20–160 px, Kacheln sind 200 px groß —
-    // eine Abtastung der Kachelmittelpunkte fand deshalb fast nie eine Kachel in Sichtweite
-    // (nicht mal die eigene) und lieferte konstant 0. Die Auflösung hängt jetzt am Sichtradius
-    // der Kreatur, nicht an der Kachelgröße, und funktioniert bei jedem Radius.
+    // What gets sampled is the creature's OWN sight cone (a polar grid of distance rings x
+    // angles), not the tile grid. Reason: real sight radii are ~20-160 px while tiles are
+    // 200 px, so sampling tile centres almost never found a tile within sight — not even the
+    // creature's own — and returned a constant 0. Resolution now follows the sight radius
+    // rather than the tile size, and works at any radius.
     //
-    // Die Winkel-Offsets decken den Kegel per Konstruktion ab → keine FOV-Prüfung nötig; bei 360°
-    // ergibt sich automatisch der Vollkreis. Read-only → sicher im parallelen sense()-Pfad.
-    // Das Vorzeichen entspricht der Konvention von angleToFood (gleiche Links/Rechts-Deutung fürs NN).
+    // The angle offsets cover the cone by construction, so no FOV check is needed; at 360
+    // degrees the full circle falls out automatically. Read-only, hence safe on the parallel
+    // sense() path. The sign follows the convention of angleToFood, so the network reads
+    // left/right the same way everywhere.
     func directionalBearings(observerX px: Float, observerY py: Float,
                              headingCos hx: Float, headingSin hy: Float,
                              sightRadius sightR: Float, sightAngle: Float)
@@ -159,29 +161,29 @@ struct BiomeMap {
 
         guard sightR > 0, sightAngle > 0 else { return (0, 0, 0, 0, 0) }
 
-        let rings = 3     // Distanzringe
-        let rays  = 8     // Winkelproben je Ring, gleichmäßig über den Sichtkegel
+        let rings = 3     // distance rings
+        let rays  = 8     // angular samples per ring, spread evenly over the sight cone
         let heading = atan2(hy, hx)
         let half    = sightAngle / 2
         let step    = sightAngle / Float(rays)
 
-        // Links/Rechts-Akkumulator je Biom: (grassland, forest, desert, wetland, water)
+        // Left/right accumulator per biome: (grassland, forest, desert, wetland, water)
         var lr: (Float, Float, Float, Float, Float) = (0, 0, 0, 0, 0)
         var totalW: Float = 0
 
         for r in 0..<rings {
-            let frac = (Float(r) + 0.5) / Float(rings)   // 0.17, 0.5, 0.83 des Sichtradius
+            let frac = (Float(r) + 0.5) / Float(rings)   // 0.17, 0.5, 0.83 of the sight radius
             let dist = frac * sightR
-            let w    = 1 - frac                          // Nähe zählt mehr
+            let w    = 1 - frac                          // closer samples count for more
             for a in 0..<rays {
-                let offset = -half + (Float(a) + 0.5) * step   // relativer Winkel zur Blickrichtung
+                let offset = -half + (Float(a) + 0.5) * step   // angle relative to the heading
                 let angle  = heading + offset
                 let x = px + cos(angle) * dist
                 let y = py + sin(angle) * dist
                 totalW += w
-                let contrib = w * sin(offset)            // −1 links … +1 rechts
-                // biome(at:) klemmt außerhalb der Welt auf die Randkachel — am Weltrand
-                // nimmt eine Kreatur dort schlicht dasselbe Randterrain wahr.
+                let contrib = w * sin(offset)            // -1 left ... +1 right
+                // biome(at:) clamps out-of-world points to the edge tile, so at the world
+                // border a creature simply perceives more of that same edge terrain.
                 switch biome(at: CGPoint(x: CGFloat(x), y: CGFloat(y))) {
                 case .grassland: lr.0 += contrib
                 case .forest:    lr.1 += contrib
@@ -198,14 +200,14 @@ struct BiomeMap {
         return (c(lr.0), c(lr.1), c(lr.2), c(lr.3), c(lr.4))
     }
 
-    // MARK: Erzeugung
+    // MARK: Generation
 
     private static func generate(cols: Int, rows: Int,
                                  worldSize: CGSize, tileSize: CGFloat) -> [Biome] {
         let seedCount = max(6, (cols * rows) / 8)
 
-        // Biom-Beutel gemäß Zielverteilung befüllen, dann mischen. Wasser wird auf
-        // mindestens 2 Saaten angehoben, damit immer trennende Gewässer entstehen.
+        // Fill a bag of biomes according to the target distribution, then shuffle it.
+        // Water is raised to at least 2 seeds so dividing bodies of water always form.
         let weights: [(Biome, Int)] = [
             (.grassland, 35), (.forest, 25), (.desert, 15), (.wetland, 10), (.water, 15)
         ]
@@ -221,7 +223,7 @@ struct BiomeMap {
         }
         bag.shuffle()
 
-        // Saatpunkte zufällig platzieren.
+        // Scatter the seed points at random.
         let seeds: [(x: Float, y: Float, biome: Biome)] = bag.map { biome in
             (Float.random(in: 0..<Float(worldSize.width)),
              Float.random(in: 0..<Float(worldSize.height)),

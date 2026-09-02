@@ -3,68 +3,69 @@ import CoreGraphics
 
 final class Creature {
 
-    // MARK: - Identität
+    // MARK: - Identity
 
     let id = UUID()
     var dna: DNA
     var brain: NeuralNetwork
 
-    // MARK: - Position & Bewegung
+    // MARK: - Position & movement
 
     var position: CGPoint
     var heading: Float = Float.random(in: 0..<(2 * .pi))
-    // cos/sin des Headings gecacht — jede Kreatur ist Nachbar vieler anderer,
-    // die Herding-/Approach-Sensoren lesen diese Werte n-fach pro Tick.
+    // cos/sin of the heading, cached: every creature is a neighbour of many others, and the
+    // herding/approach sensors read these values n times per tick.
     private(set) var headingCos: Float = 0
     private(set) var headingSin: Float = 0
 
-    // MARK: - Zustand
+    // MARK: - State
 
     var energy: Float
-    // Körpermasse: akkumulierter Nährwert (Muskeln, Fett) — unabhängig vom metabolischen Akku.
-    // Steigt wenn gut ernährt, baut sich bei Hunger durch Muskelkatabolismus ab.
-    // Bestimmt den Nährwert der Leiche.
+    // Body mass: accumulated nutritional value (muscle, fat), separate from the metabolic
+    // battery. It grows while well fed and is broken down by muscle catabolism when starving.
+    // It determines how nourishing the corpse will be.
     var bodyMass: Float
     var age: Int = 0
     var isAlive: Bool { energy > 0 }
 
-    // Interozeption: gleitender Durchschnitt der pro Tick gewonnenen Energie (EMA, α=0.05).
-    // Hohe Rate → Zone gut, niedrige Rate → Zone karg oder falsche Diät.
+    // Interoception: a moving average of the energy gained per tick (EMA, alpha = 0.05).
+    // A high rate means a good patch; a low one means barren ground or the wrong diet.
     var recentFeedingRate: Float = 0
     private var energyGainedThisTick: Float = 0
 
-    // Seneszenz: steigt ab 70% der genetischen Lebensspanne, läuft unkontrolliert weiter.
-    // Bei maxAge = 1.0 → +50% Energiekosten, -30% Speed. Danach weiter steigend → Tod durch Energiemangel.
+    // Senescence: sets in at 70% of the genetic lifespan and keeps climbing without bound.
+    // At maxAge it costs +50% energy and -30% speed, and it rises from there until the
+    // creature dies of energy starvation.
     var senescence: Float {
         let progress = Float(age) / Float(dna.maxAge)
         return max(0, (progress - 0.7) / 0.3)
     }
     var lastAction: ActionOutput?
-    // Letzte Wahrnehmung — nur befüllt, wenn World.sensorRecording an ist (Trace/Diagnose).
-    // Erlaubt es, die NN-Entscheidung zu erklären: Wahrnehmung → Aktion.
+    // The last perception — only filled in when World.sensorRecording is on (tracing and
+    // diagnostics). It is what makes a network decision explainable: perception -> action.
     var lastSensors: SensorInput?
     weak var lastAttacker: Creature?
 
-    // MARK: - Abgeleitete Werte aus DNA
+    // MARK: - Values derived from DNA
 
     var eatRadius:    CGFloat { CGFloat(dna.size * 8 + 4) }
     var sightRadius:  CGFloat { CGFloat((dna.sightRadius * 120 + 40) * max(0.3, 1 - senescence * 0.4)) }
-    // Drehgeschwindigkeit in rad/Tick; Seneszenz macht Kreatur träger
+    // Turn rate in rad/tick; senescence makes a creature more sluggish
     var maxTurnRate:  Float   { (dna.turnRate * 0.35 + 0.05) * max(0.3, 1 - senescence * 0.4) }
-    // Sichtwinkel in Radian: gene=0 → 120° (2π/3), gene=1 → 360° (2π)
-    // Breiter Winkel = hohe Energiekosten; schmaler Kegel = günstig, aber blind nach hinten/seitlich.
+    // Sight angle in radians: gene=0 -> 120 degrees (2 pi / 3), gene=1 -> 360 (2 pi).
+    // A wide angle costs a lot of energy; a narrow cone is cheap but blind to the sides and rear.
     var sightAngle:   CGFloat {
-        let minAngle: CGFloat = 2 * .pi / 3   // 120° Minimum
+        let minAngle: CGFloat = 2 * .pi / 3   // 120 degrees minimum
         return CGFloat(dna.sightAngle) * (2 * .pi - minAngle) + minAngle
     }
     var attackRadius:        CGFloat { CGFloat(dna.size * 14 + dna.aggression * 10 + 4) }
-    // Geruchsradius: omnidirektional, unabhängig vom Sichtkegel
+    // Smell radius: omnidirectional, independent of the sight cone
     var olfactionSmellRadius: CGFloat { CGFloat(dna.olfaction * 170 + 30) }
-    // Landschaftshorizont: große Terrain-Merkmale (Seen, Waldränder) erkennt man aus weit
-    // größerer Entfernung als ein einzelnes Futterobjekt. Ohne diesen Faktor läge die
-    // Terrain-Wahrnehmung (40–160 px) weit unter der Skala der Biom-Regionen (~600 px) —
-    // die Kreatur stünde mitten in gleichförmigem Terrain und bekäme nie ein Richtungssignal.
-    // Bleibt ans Sicht-Gen gekoppelt: Sichtweite bleibt evolvierbar und kostenpflichtig.
+    // Landscape horizon: large terrain features (lakes, forest edges) are recognizable from
+    // much farther away than a single item of food. Without this factor, terrain perception
+    // (40-160 px) would sit far below the scale of the biome regions (~600 px) — a creature
+    // would stand in the middle of uniform terrain and never receive a directional signal.
+    // It stays tied to the sight gene, so range remains evolvable and costly.
     static let terrainSightFactor: CGFloat = 4
     var terrainSightRadius: CGFloat { sightRadius * Creature.terrainSightFactor }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
@@ -75,9 +76,9 @@ final class Creature {
     var maxSpeed:     Float   { dna.speed * 2.5 + 0.3 }
 
     var canReproduce: Bool {
-        // reproductionThreshold-Gen [0,1] skaliert auf 55%–85% der maximalen Energie
+        // The reproductionThreshold gene [0,1] scaled to 55%-85% of maximum energy
         let threshold = dna.reproductionThreshold * 0.3 + 0.55
-        // Geschlechtsreife: 10% der genetischen Lebensspanne (skaliert mit Strategie)
+        // Sexual maturity: 10% of the genetic lifespan, so it scales with the life strategy
         return energy >= maxEnergy * Float(threshold) && age > dna.maxAge / 10
     }
 
@@ -87,7 +88,7 @@ final class Creature {
         self.dna      = dna
         self.position = position
         self.energy   = dna.size * 80 + 40
-        self.bodyMass = dna.size * 60 + 20   // Startmasse proportional zur Körpergröße
+        self.bodyMass = dna.size * 60 + 20   // starting mass is proportional to body size
         let hc = NeuralNetwork.minHiddenCount +
             Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
         self.brain    = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: hc)
@@ -112,19 +113,19 @@ final class Creature {
         headingCos = cos(heading)
         headingSin = sin(heading)
 
-        // Biom am Standort verlangsamt die Fortbewegung (Sand, Morast). Neutral (1.0) ohne Biome.
+        // The biome underfoot slows movement (sand, mire). Neutral (1.0) when biomes are off.
         let biomeSpeedFactor = world.biome(at: position).speedFactor
         let effectiveMaxSpeed = maxSpeed * max(0.1, 1 - senescence * 0.3) * biomeSpeedFactor
         let speed = output.speed * effectiveMaxSpeed
 
-        // Zielposition mit toroidalem Wrap-around (Welt-Kanten verbinden sich)
+        // Target position with toroidal wrap-around (the world edges join up)
         let newX = (position.x + CGFloat(headingCos * speed) + world.size.width)
             .truncatingRemainder(dividingBy: world.size.width)
         let newY = (position.y + CGFloat(headingSin * speed) + world.size.height)
             .truncatingRemainder(dividingBy: world.size.height)
 
-        // Unpassierbare Biome (Wasser) blockieren die Bewegung — echte Barriere.
-        // Ohne Biome ist alles Wiese (passierbar), also identisches Verhalten wie zuvor.
+        // Impassable biomes (water) block movement outright — a genuine barrier. With biomes
+        // off everything is grassland, hence passable, and behaviour is unchanged.
         if world.biome(at: CGPoint(x: newX, y: newY)).isPassable {
             position.x = newX
             position.y = newY
@@ -134,13 +135,13 @@ final class Creature {
     func digestibility(for food: FoodSource) -> Float {
         switch food.type {
         case .plant:
-            // Pflanzenfresser-Enzyme: aggression=0 → 60 %, aggression=1 → 18 %
+            // Herbivore enzymes: aggression=0 -> 60%, aggression=1 -> 18%
             return (1.0 - dna.aggression * 0.7) * 0.6
         case .corpse:
-            // Aasverwertung als Trittstein: aggression=0 → 20 %, 0.5 → 50 %, 1 → 80 %.
-            // Der Basiswert 0.2 macht Aasfressen schon für Allesfresser lohnend und schafft
-            // einen durchgehenden Fitness-Gradienten Pflanzenfresser → Aasfresser → Jäger.
-            // Ohne ihn liegt zwischen beiden Strategien ein Tal, das nur große Mutationssprünge überwinden.
+            // Carrion as a stepping stone: aggression=0 -> 20%, 0.5 -> 50%, 1 -> 80%.
+            // The 0.2 floor makes scavenging worthwhile even for omnivores and creates a
+            // continuous fitness gradient herbivore -> scavenger -> hunter. Without it the two
+            // strategies are separated by a valley that only large mutations can cross.
             return 0.2 + dna.aggression * 0.60
         }
     }
@@ -150,11 +151,12 @@ final class Creature {
         var gain = food.energyValue * d
 
         if food.type == .plant {
-            // Pflanzen wehren sich chemisch (Tannine, Alkaloide, Fasern). Pflanzenadaptierte Tiere
-            // (aggression unter der Schwelle) entgiften billig — kein Abzug. Erst darüber zahlt ein
-            // Fleischfresser eine Giftlast ∝ Grad seiner Spezialisierung × gefressener Menge, bis das
-            // Fressen von Pflanzen netto Energie kostet. Fleisch bleibt giftfrei, deshalb bleibt das
-            // Aas-Trittstein (siehe digestibility) für aufsteigende Allesfresser vollständig erhalten.
+            // Plants defend themselves chemically (tannins, alkaloids, fibre). Plant-adapted
+            // animals — aggression below the threshold — detoxify cheaply and pay nothing.
+            // Above it a carnivore takes on a toxin load proportional to how specialized it is
+            // times how much it ate, until eating plants costs net energy. Meat stays toxin
+            // free, so the carrion stepping stone (see digestibility) is left fully intact for
+            // omnivores on the way up.
             let excess = max(0, dna.aggression - plantToxinThreshold)
             gain -= excess * plantToxinFactor * food.energyValue
         }
@@ -163,36 +165,36 @@ final class Creature {
             energy = min(energy + gain, maxEnergy)
             energyGainedThisTick += gain
         } else {
-            // Netto-Verlust: die Giftlast übersteigt den Nährwert (Vergiftung)
+            // Net loss: the toxin load exceeds the nutritional value (poisoning)
             energy = max(0, energy + gain)
         }
     }
 
-    // MARK: - Privates
+    // MARK: - Private
 
     private func consumeEnergy() {
         let baseCost:       Float = 0.08
-        // Statische Wartungskosten: quadratisch skaliert (gen² × 2 × alte_Konstante).
-        // gene=0.5 → identisch zu vorher; gene=1.0 → doppelt so teuer.
-        // Erzwingt Spezialisierung — alles auf Maximum ist überproportional teuer.
+        // Static maintenance cost, scaled quadratically (gene^2 x 2 x the old constant), so
+        // gene=0.5 matches the old linear cost and gene=1.0 is twice as expensive. This forces
+        // specialization: maxing out everything is disproportionately expensive.
         let s = dna.size;       let sizeCost:       Float = s * s * 0.12
-        // Aggression ist ein Verhaltens-/Muskelmerkmal: die eigentlichen Kosten fallen beim
-        // Angreifen an (aggression×2 pro Angriff in World.attackCreatures), nicht als hohe
-        // Standmiete. Niedrigerer Koeffizient (0.07 statt 0.18) entlastet die doppelte
-        // quadratische Steuer, die Jäger (brauchen Größe UND Aggression) sonst permanent zahlen.
+        // Aggression is a behavioural/muscular trait: its real cost is paid when attacking
+        // (aggression x 2 per attack in World.attackCreatures), not as high standing rent. The
+        // lower coefficient (0.07 instead of 0.18) eases the double quadratic tax that hunters,
+        // who need both size AND aggression, would otherwise pay permanently.
         let ag = dna.aggression; let aggressionCost: Float = ag * ag * 0.07
         let br = dna.brainSize;  let brainCost:      Float = br * br * 0.04
         let sr = dna.sightRadius; let sa = dna.sightAngle
         let sightCost:      Float = sr * sr * 0.024 + sa * sa * 0.030
         let ol = dna.olfaction;  let olfactionCost: Float = ol * ol * 0.020
-        // Dynamische Kosten bleiben linear — abhängig vom tatsächlichen Verhalten, nicht nur vom Gen.
+        // Dynamic costs stay linear — they depend on actual behaviour, not on the gene alone.
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
         let actualTurn      = abs((lastAction?.turnAngle ?? 0.5) - 0.5) * 2   // [0,1]
         let turnCost:       Float = actualTurn * maxTurnRate * 0.08
         let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + olfactionCost + turnCost
         energy -= baseCosts * (1 + senescence * 0.5)
 
-        // Gut ernährt (>60%): Körpermasse aufbauen. Verhungernd (<20%): Muskelkatabolismus.
+        // Well fed (>60%): build body mass. Starving (<20%): muscle catabolism.
         let maxBodyMass = dna.size * 60 + 20
         if energy > maxEnergy * 0.6 {
             bodyMass = min(maxBodyMass, bodyMass + 0.05)

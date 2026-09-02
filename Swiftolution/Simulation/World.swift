@@ -1,14 +1,14 @@
 import Foundation
 import CoreGraphics
 
-// Warum eine Kreatur gestorben ist — für Diagnose der Populationsdynamik.
+// Why a creature died — the basis for diagnosing population dynamics.
 enum DeathCause: String {
-    case starvation   // Energie ≤ 0 ohne Angreifer (Stoffwechsel/Hunger, Vergiftung)
-    case predation    // Energie ≤ 0 nach Angriff in diesem Tick
-    case oldAge       // Alters-Mortalität (Gompertz-Wurf) trotz vorhandener Energie
+    case starvation   // energy <= 0 with no attacker (metabolism, hunger, poisoning)
+    case predation    // energy <= 0 after being attacked this tick
+    case oldAge       // age mortality (a Gompertz roll) despite energy in the tank
 }
 
-// Ein einzelnes Simulationsereignis für den optionalen Live-Stream (World.events).
+// A single simulation event for the optional live stream (World.events).
 struct SimEvent {
     enum Kind: String { case birth, death }
     let kind: Kind
@@ -16,12 +16,12 @@ struct SimEvent {
     let x: Float
     let y: Float
     let aggression: Float
-    let cause: DeathCause?   // nur bei .death
+    let cause: DeathCause?   // only set for .death
 }
 
 final class World {
 
-    // MARK: - Eigenschaften
+    // MARK: - Properties
 
     let size: CGSize
     var creatures:   [Creature]   = []
@@ -30,25 +30,25 @@ final class World {
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
-    var plantCount:  Int = 0  // Cache — vermeidet filter { .plant } jeden Tick
-    var corpseCount: Int = 0  // Cache — vermeidet filter { .corpse } in updateStats
+    var plantCount:  Int = 0  // cache — avoids a filter { .plant } every tick
+    var corpseCount: Int = 0  // cache — avoids a filter { .corpse } in updateStats
     var totalDeaths: Int = 0
 
-    // Todesursachen (kumulativ) — welcher Faktor die Population wie stark drückt.
+    // Causes of death (cumulative) — which factor is pressing on the population, and how hard.
     var deathsByStarvation = 0
     var deathsByPredation  = 0
     var deathsByOldAge     = 0
 
-    // Optionaler Live-Ereignisstrom (Geburten/Tode). Nur bei eventRecording befüllt;
-    // ein Beobachter (z. B. der Headless-Runner) leert `events` nach jedem tick().
+    // Optional live event stream (births and deaths). Only filled in while eventRecording is
+    // on; an observer such as the headless runner drains `events` after each tick().
     var eventRecording = false
     var events: [SimEvent] = []
 
-    // Speichert die Wahrnehmung jeder Kreatur pro Tick (Creature.lastSensors) — nur für
-    // Trace/Diagnose. Aus, weil es sonst pro Tick population × 25 Floats kostet.
+    // Stores every creature's perception each tick (Creature.lastSensors), for tracing and
+    // diagnostics only. Off by default, since it otherwise costs population x 25 floats a tick.
     var sensorRecording = false
-    var foodGrowthRate:   Double = 0.03   // logistische Rate: Anteil der freien Kapazität pro Tick
-    var maxFood:          Int    = 250    // Kapazitätsgrenze (konfigurierbar)
+    var foodGrowthRate:   Double = 0.03   // logistic rate: the share of free capacity filled per tick
+    var maxFood:          Int    = 250    // carrying capacity (configurable)
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10
     var maxPopulation:    Int    = 300
@@ -56,43 +56,43 @@ final class World {
     var minSpawnThreshold: Int  = 5
     var latitudeGradientEnabled: Bool = false
 
-    // Assortative Paarung: Kreaturen paaren sich nur mit genetisch ähnlichen Partnern.
-    // Treibt reproduktive Isolation → sichtbare Artbildung statt eines verschwommenen Genpools.
-    // Verträgt sich mit einer selbsttragenden Population (Verhaltenstest: hält die Kapazität
-    // auch bei stufenweiser Nahrungsreduktion). Niedrigere Schwelle → mehr, engere Arten,
-    // aber kleinerer Partnerpool; in einer knappen Population entsprechend vorsichtig senken.
+    // Assortative mating: creatures only pair with genetically similar partners. This drives
+    // reproductive isolation, so species become visible instead of the gene pool blurring into
+    // one. It coexists with a self-sustaining population (behavioural check: capacity holds
+    // even under stepwise food reduction). A lower threshold gives more, tighter species but a
+    // smaller pool of partners — lower it carefully in a population that is already thin.
     var speciationEnabled:   Bool  = true
-    var speciationThreshold: Float = 0.45   // max. genetische Distanz für Paarung (Bereich der Distanz: [0, 2])
+    var speciationThreshold: Float = 0.45   // max genetic distance for mating (distance ranges over [0, 2])
 
-    // Paarungsreichweite in px: wie nah zwei Partner sich sein müssen. Begrenzt die
-    // Reichweite des Genflusses — je kleiner, desto kleinräumiger können Arten sich trennen.
-    // Echter Parameter, seit reproduceCreatures die Distanz explizit prüft; zuvor ergab sie
-    // sich aus der Zellgröße des Grids und lag faktisch bei ~90 px.
+    // Mating range in px: how close two partners have to be. It bounds the reach of gene flow,
+    // so a smaller radius lets species separate on a finer spatial scale. It became a real
+    // parameter once reproduceCreatures checked the distance explicitly; before that it fell
+    // out of the grid's cell size and was effectively ~90 px.
     static let mateRadius: CGFloat = 40
 
-    // Pflanzengift: Fleischfresser (aggression > Schwelle) zahlen beim Pflanzenfressen eine Giftlast.
-    // 0 = aus. Wird pro Fressvorgang an Creature.eat übergeben.
+    // Plant toxin: carnivores (aggression above the threshold) take on a toxin load when
+    // eating plants. 0 = off. Passed to Creature.eat on every feeding.
     var plantToxinFactor:    Float = 0.60
     var plantToxinThreshold: Float = 0.50
 
-    // Biome: räumliche Nischen (Fruchtbarkeit, Deckung, Untergrund) + Wasserbarrieren.
-    // Die Karte wird einmal pro Welt erzeugt; das Flag schaltet Wirkung, Spawns und Rendering.
+    // Biomes: spatial niches (fertility, cover, going underfoot) plus water barriers. The map
+    // is generated once per world; the flag switches its effects, spawns and rendering.
     let biomeMap: BiomeMap
     var biomesEnabled: Bool = false
 
-    // Biom an einer Position. Ausgeschaltet → überall neutrale Wiese (alle Faktoren 1.0, passierbar),
-    // sodass sämtliche biomabhängigen Pfade ohne Sonderfall exakt das alte Verhalten liefern.
+    // The biome at a position. Switched off, everything is neutral grassland (all factors 1.0,
+    // passable), so every biome-dependent path reproduces the old behaviour without special cases.
     @inline(__always)
     func biome(at point: CGPoint) -> Biome {
         biomesEnabled ? biomeMap.biome(at: point) : .grassland
     }
 
-    // Jahreszeiten — Cosinus-Zyklus moduliert das Pflanzenwachstum
+    // Seasons — a cosine cycle modulates plant growth
     var seasonEnabled:   Bool  = false
-    var seasonLength:    Int   = 3000    // Ticks pro Jahr
-    var seasonAmplitude: Float = 0.7    // 0 = kein Effekt, 1 = Winter bringt 0% Wachstum
+    var seasonLength:    Int   = 3000    // ticks per year
+    var seasonAmplitude: Float = 0.7    // 0 = no effect, 1 = winter halts growth entirely
 
-    // Aktueller saisonaler Wachstumsfaktor [1-amplitude … 1.0]
+    // The current seasonal growth factor, in [1 - amplitude ... 1.0]
     var currentSeasonFactor: Double {
         guard seasonEnabled, seasonLength > 0 else { return 1.0 }
         let t = Double(tickCount % seasonLength) / Double(seasonLength)   // [0, 1)
@@ -126,7 +126,7 @@ final class World {
     func populate(creatures creatureCount: Int, food foodCount: Int) {
         for _ in 0..<creatureCount {
             var dna = DNA.random()
-            // Urknall: alle Lebewesen starten als Pflanzenfresser — Fleischfresser entstehen durch Evolution
+            // The big bang: everything starts herbivorous — carnivores have to evolve
             dna.genes[3] = Float.random(in: 0...0.4)
             creatures.append(Creature(dna: dna, position: creatureSpawnPosition()))
         }
@@ -137,7 +137,7 @@ final class World {
         corpseCount = 0
     }
 
-    // MARK: - Simulations-Tick
+    // MARK: - Simulation tick
 
     func tick() {
         tickCount += 1
@@ -152,51 +152,51 @@ final class World {
         decayFood()
     }
 
-    // MARK: - Bewegung & Wahrnehmung
+    // MARK: - Movement & perception
 
     private func moveCreatures() {
         let snapshot = creatures
         let count = snapshot.count
         guard count > 0 else { return }
 
-        // Phase 1 — Parallel: Wahrnehmung + NN-Aktivierung.
-        // Jede Kreatur liest nur ihren eigenen Zustand und den unveränderlichen Grid — kein Data Race.
-        // withUnsafeMutableBufferPointer fixiert den Array-Puffer → COW-freier Schreibzugriff aus n Threads.
+        // Phase 1 — parallel: perception and network activation. Each creature reads only its
+        // own state and the immutable grid, so there is no data race.
+        // withUnsafeMutableBufferPointer pins the array buffer, giving COW-free writes from n threads.
         var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1, 1]), count: count)
         outputs.withUnsafeMutableBufferPointer { buf in
             DispatchQueue.concurrentPerform(iterations: count) { i in
                 let input = sense(for: snapshot[i])
-                // Jede Iteration schreibt ausschließlich ihre eigene Kreatur → kein Data Race.
+                // Each iteration writes only its own creature, so there is no data race.
                 if sensorRecording { snapshot[i].lastSensors = input }
                 buf[i] = snapshot[i].brain.activate(inputs: input)
             }
         }
 
-        // Phase 2 — Sequential: Position und Zustand schreiben (Positionsänderungen beeinflussen den Tick).
+        // Phase 2 — sequential: write position and state (position changes affect the same tick).
         for (i, creature) in snapshot.enumerated() {
             creature.apply(output: outputs[i], in: self)
             creature.tick()
         }
     }
 
-    // Baut den Sensor-Input für ein Lebewesen auf.
-    // Nahrung und nächste Kreatur werden nur im Sichtkegel wahrgenommen (FOV).
-    // Dichte und Herding-Richtung sind omnidirektional (Tastsinn / Druckwellen).
-    // Läuft parallel aus n Threads: nur eigene lokale Variablen + read-only Grid,
-    // keine Allokationen (Visitor-API), Distanzvergleiche quadriert (sqrt nur am Ende).
+    // Builds the sensor input for one creature.
+    // Food and the nearest creature are only perceived inside the sight cone (FOV), while
+    // density and herding direction are omnidirectional (touch, pressure waves).
+    // Runs in parallel across n threads: local variables plus a read-only grid, no allocations
+    // (visitor API), and squared distance comparisons (sqrt only at the very end).
     private func sense(for creature: Creature) -> SensorInput {
         let px = Float(creature.position.x)
         let py = Float(creature.position.y)
-        // Biom am eigenen Standort: Deckung verkürzt die effektive Sichtweite (Wald),
-        // freie Zonen (Wüste) verlängern sie. Betrifft nur die Wahrnehmung, nicht das Gen.
+        // The biome underfoot: cover shortens the effective sight range (forest) while open
+        // ground lengthens it (desert). This affects perception only, never the gene.
         let localBiome  = biome(at: creature.position)
         let sightRadius = creature.sightRadius * CGFloat(localBiome.sightFactor)
         let sightR   = Float(sightRadius)
         let sightRSq = sightR * sightR
         let isFull   = creature.sightAngle >= 2 * .pi * 0.995
 
-        // FOV per Skalarprodukt statt atan2: Winkel(d, heading) ≤ halbAngle
-        //   ⇔ dot/|d| ≥ cos(halbAngle) — auflösbar ohne sqrt über Vorzeichen + Quadrate.
+        // FOV via a dot product instead of atan2: angle(d, heading) <= halfAngle
+        //   <=> dot / |d| >= cos(halfAngle) — resolvable without sqrt using signs and squares.
         let cosHalf   = cos(Float(creature.sightAngle) / 2)
         let cosHalfSq = cosHalf * cosHalf
         let hx = creature.headingCos
@@ -213,13 +213,13 @@ final class World {
             }
         }
 
-        // Geruch: omnidirektionale Pflanzendichte per O(1)-Rasterabfrage. Als Zähl-Scan
-        // zwang sie den Nahrungs-Pass auf max(Sicht, Geruch) — der Geruchsradius ist meist
-        // der größere (median 115 px gegen 94 px Sicht), obwohl er nur diese eine Zahl liefert.
+        // Smell: omnidirectional plant density from an O(1) raster query. As a counting scan it
+        // forced the food pass out to max(sight, smell) — and the smell radius is usually the
+        // larger of the two (median 115 px against 94 px) despite yielding this single number.
         let plantsSmelled = grid.plantsNear(creature.position,
                                             within: creature.olfactionSmellRadius)
 
-        // Nahrungs-Pass für die Sicht: nächste Nahrung + Anzahl im Sichtkegel.
+        // The food pass for vision: nearest food plus the count inside the sight cone.
         var nearestFoodDx: Float = 0, nearestFoodDy: Float = 0
         var nearestFoodDistSq   = Float.greatestFiniteMagnitude
         var nearestFoodIsCorpse = false
@@ -248,7 +248,7 @@ final class World {
             nearestFoodType = nearestFoodIsCorpse ? 1.0 : 0.0
         }
 
-        // Ein Kreatur-Pass für Sicht, Dichte (<55) und Herding (<80)
+        // A single creature pass covering sight, density (<55) and herding (<80)
         var nearestDx: Float = 0, nearestDy: Float = 0
         var nearestDistSq = Float.greatestFiniteMagnitude
         var nearestOther: Creature? = nil
@@ -281,7 +281,7 @@ final class World {
         var angleToCreature:   Float = 0
         var distToCreature:    Float = 1
         var approachVelocity:  Float = 0
-        var nearestCreatureRed:   Float = 0.5   // neutral grau wenn keine Kreatur sichtbar
+        var nearestCreatureRed:   Float = 0.5   // neutral grey when no creature is visible
         var nearestCreatureGreen: Float = 0.5
         var nearestCreatureBlue:  Float = 0.5
         if let other = nearestOther {
@@ -309,14 +309,14 @@ final class World {
             avgNearbyHeading = normalizeAngle(atan2(herdSin, herdCos) - creature.heading) / .pi
         }
 
-        // Richtungsaufgelöste Terrain-Wahrnehmung (nur bei aktiven Biomen; sonst alles 0 →
-        // keine Wirkung auf die NN-Ausgabe, identisches Verhalten wie ohne Biome).
+        // Direction-resolved terrain perception, only with biomes on; otherwise everything is
+        // 0, which leaves the network output untouched and behaviour unchanged.
         var tbGrass: Float = 0, tbForest: Float = 0, tbDesert: Float = 0
         var tbWetland: Float = 0, tbWater: Float = 0
         if biomesEnabled {
-            // Terrain auf Landschaftsskala wahrnehmen (Vielfaches der Sichtweite), sonst
-            // steht die Kreatur immer in gleichförmigem Terrain und sieht kein Gefälle.
-            // Deckung (Wald) dämpft auch den Landschaftsblick — daher derselbe sightFactor.
+            // Perceive terrain on a landscape scale (a multiple of the sight range), otherwise
+            // a creature always stands in uniform terrain and sees no gradient at all.
+            // Cover (forest) damps the landscape view too, hence the same sightFactor.
             let terrainR = Float(creature.terrainSightRadius * CGFloat(localBiome.sightFactor))
             let b = biomeMap.directionalBearings(observerX: px, observerY: py,
                                                  headingCos: hx, headingSin: hy,
@@ -355,14 +355,14 @@ final class World {
         )
     }
 
-    // MARK: - Angriff
+    // MARK: - Attacking
 
     func attackCreatures() {
-        // ObjectIdentifier: Pointer-Hash (8 Byte) statt UUID-Hash (16 Byte) — doppelt so schnell.
+        // ObjectIdentifier: an 8-byte pointer hash instead of a 16-byte UUID hash — twice as fast.
         var energyDeltas = [ObjectIdentifier: Float](minimumCapacity: creatures.count)
 
         for attacker in creatures {
-            // Kein harter Aggression-Threshold — Schaden und Kosten skalieren bereits mit aggression.
+            // No hard aggression threshold — damage and cost already scale with aggression.
             guard let action = attacker.lastAction,
                   action.wantsToAttack > 0.5 else { continue }
 
@@ -370,7 +370,7 @@ final class World {
             guard attacker.dna.size >= victim.dna.size * 0.6 else { continue }
 
             let rawDamage = (attacker.dna.size * 0.6 + attacker.dna.aggression * 0.4) * 50
-            // Größe = Robustheit (dickere Haut/Panzer), Aggression = Kampferfahrung/Reflexe
+            // Size is robustness (thicker hide, armour); aggression is combat experience and reflexes
             let defense   = min(victim.dna.size * 0.30 + victim.dna.aggression * 0.60, 0.90)
             let damage    = rawDamage * (1 - defense)
 
@@ -385,18 +385,18 @@ final class World {
         }
     }
 
-    // MARK: - Fressen
+    // MARK: - Feeding
 
     func feedCreatures() {
         var eatenIDs = Set<UUID>()
         var eatenPlants  = 0
         var eatenCorpses = 0
         for creature in creatures {
-            // NN-Entscheidung pro Nahrungstyp — selektive Diäten sind möglich.
+            // A separate network decision per food type, which makes selective diets possible.
             let action = creature.lastAction
             let wantsPlant  = (action?.wantsToEatPlant  ?? 1.0) > 0.5
             let wantsCorpse = (action?.wantsToEatCorpse ?? 1.0) > 0.5
-            // Spart die Grid-Abfrage, wenn die Kreatur gar nichts fressen will
+            // Skips the grid query entirely when the creature wants to eat nothing at all
             guard wantsPlant || wantsCorpse else { continue }
             let eatRadius = creature.eatRadius
             let eatRSq = Float(eatRadius * eatRadius)
@@ -422,11 +422,11 @@ final class World {
         }
     }
 
-    // MARK: - Tod
+    // MARK: - Death
 
     func checkDeaths() {
-        // Gompertz-ähnliche Sterblichkeit: kleines Grundrisiko + exponentiell steigendes Altersrisiko.
-        // Ein Pass — kein UUID-Set, kein zweites Iterieren.
+        // Gompertz-like mortality: a small baseline risk plus an exponentially rising age risk.
+        // A single pass — no UUID set, no second traversal.
         var survivors: [Creature] = []
         survivors.reserveCapacity(creatures.count)
         for creature in creatures {
@@ -437,8 +437,9 @@ final class World {
                 survivors.append(creature)
             } else {
                 totalDeaths += 1
-                // Ursache: Energie-Tod (Hunger vs. Prädation je nach Angreifer diesen Tick),
-                // sonst Alters-Mortalität (lebendig, aber Gompertz-Wurf ausgelöst).
+                // The cause is an energy death — starvation or predation, depending on whether
+                // something attacked this tick — otherwise age mortality (still alive, but the
+                // Gompertz roll came up).
                 let cause: DeathCause
                 if !creature.isAlive {
                     cause = creature.lastAttacker != nil ? .predation : .starvation
@@ -458,8 +459,9 @@ final class World {
                 if creature.bodyMass > 1 {
                     var corpseEnergy = creature.bodyMass
                     if let killer = creature.lastAttacker, killer.isAlive {
-                        // Angreifer frisst direkt beim Kill — Anteil proportional zur Aggression.
-                        // Energie wird von der Leiche abgezogen, nicht neu erzeugt.
+                        // The attacker feeds on the kill directly, taking a share proportional
+                        // to its aggression. That energy is deducted from the corpse rather than
+                        // created out of nothing.
                         let bonus = creature.bodyMass * killer.dna.aggression * 0.4
                         killer.energy = min(killer.energy + bonus, killer.maxEnergy)
                         corpseEnergy -= bonus
@@ -477,28 +479,28 @@ final class World {
         creatures = survivors
     }
 
-    // MARK: - Mindest-Spawn
+    // MARK: - Minimum spawn
 
     private func spawnMinimumIfNeeded() {
         guard minSpawnEnabled, creatures.count < minSpawnThreshold else { return }
         let count = minSpawnThreshold - creatures.count
         for _ in 0..<count {
             var dna = DNA.random()
-            dna.genes[3] = Float.random(in: 0...0.4)   // immer Pflanzenfresser
+            dna.genes[3] = Float.random(in: 0...0.4)   // always herbivorous
             creatures.append(Creature(dna: dna, position: creatureSpawnPosition()))
         }
     }
 
-    // MARK: - Fortpflanzung
+    // MARK: - Reproduction
 
     func reproduceCreatures() {
         guard creatures.count < maxPopulation else { return }
 
-        // ObjectIdentifier statt UUID: Pointer-Vergleich, kein 16-Byte-Hash.
+        // ObjectIdentifier instead of UUID: a pointer comparison, not a 16-byte hash.
         var mated    = Set<ObjectIdentifier>(minimumCapacity: 64)
         var newborns = [Creature]()
 
-        // Nur Lebewesen die Energie haben UND deren NN reproduzieren "will"
+        // Only creatures that have the energy AND whose network "wants" to reproduce
         let candidates = creatures
             .filter { $0.canReproduce && ($0.lastAction?.wantsToReproduce ?? 0) > 0.5 }
             .shuffled()
@@ -507,11 +509,12 @@ final class World {
             guard !mated.contains(ObjectIdentifier(parent)) else { continue }
             guard creatures.count + newborns.count < maxPopulation else { break }
 
-            // Grid-Abfrage statt O(candidates.count)-Scan: Partner wird räumlich gesucht.
-            // Paarungsschranke: bei aktiver Speziation genetische Distanz, sonst nur Aggressions-Nische.
-            // Die Distanz wird explizit geprüft: ohne die Prüfung bestimmte der gescannte
-            // Zellblock die Reichweite, womit die Zellgröße (ein Performance-Parameter) die
-            // Paarungsreichweite festlegte — real ~90 px Median statt der angegebenen 40.
+            // A grid query rather than an O(candidates.count) scan: the partner is looked up
+            // spatially. The mating barrier is genetic distance when speciation is on, and the
+            // aggression niche otherwise.
+            // The distance is checked explicitly: without that check the scanned cell block set
+            // the range, which let the cell size — a performance knob — decide the mating range,
+            // in practice a ~90 px median instead of the stated 40.
             var partner: Creature? = nil
             let mateRSq = Float(World.mateRadius * World.mateRadius)
             let parentX = Float(parent.position.x)
@@ -533,15 +536,15 @@ final class World {
             }
 
             if let partner {
-                // Sexuelle Fortpflanzung: Gene beider Eltern werden kombiniert
+                // Sexual reproduction: the genes of both parents are combined
                 mated.insert(ObjectIdentifier(parent))
                 mated.insert(ObjectIdentifier(partner))
                 let midPoint = CGPoint(x: (parent.position.x + partner.position.x) / 2,
                                        y: (parent.position.y + partner.position.y) / 2)
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
-                // Jedes Elternteil investiert 30% seiner Maximalenergie — unabhängig von der Wurfgröße.
-                // Die Gesamtinvestition beider Eltern wird gleichmäßig auf die Kinder verteilt.
-                // Kein Energie-Leak: Kinder bekommen nur was Eltern bezahlen.
+                // Each parent invests 30% of its maximum energy, regardless of litter size, and
+                // the combined investment is split evenly across the offspring. No energy leak:
+                // children receive only what the parents actually paid.
                 let costPerParent: Float = 0.30
                 let totalPool = parent.maxEnergy * costPerParent + partner.maxEnergy * costPerParent
                 let perChildEnergy = totalPool / Float(litter)
@@ -555,7 +558,7 @@ final class World {
                 parent.energy  -= parent.maxEnergy  * costPerParent
                 partner.energy -= partner.maxEnergy * costPerParent
             } else {
-                // Asexuell als Fallback — Elternteil investiert 40%, verteilt auf Wurf
+                // Asexual as a fallback — the parent invests 40%, split across the litter
                 mated.insert(ObjectIdentifier(parent))
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
                 let cost: Float = 0.40
@@ -584,7 +587,7 @@ final class World {
         }
     }
 
-    // MARK: - Nahrungswachstum
+    // MARK: - Food growth
 
     func growFood() {
         if biomesEnabled {
@@ -601,17 +604,17 @@ final class World {
         }
     }
 
-    // Biom-gewichtetes Wachstum: die globale logistische Menge wird per Rejection-Sampling
-    // platziert — Akzeptanz ∝ fertility × growthFactor des Bioms. Wasser (0) bekommt nie
-    // Pflanzen, Wüste selten, Sumpf/Wiese oft. So bilden sich fruchtbare und karge Zonen.
+    // Biome-weighted growth: the global logistic amount is placed by rejection sampling, with
+    // acceptance proportional to the biome's fertility x growthFactor. Water (0) never gets
+    // plants, desert rarely, wetland and grassland often — so fertile and barren zones form.
     private func growFoodWithBiomes() {
         let fillRatio = Double(plantCount) / Double(maxFood)
         let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
         guard newItems > 0 else { return }
-        let norm = Biome.maxFertility * 1.40   // max. fertility × max. growthFactor (Sumpf)
+        let norm = Biome.maxFertility * 1.40   // max fertility x max growthFactor (wetland)
         var added = 0
         var attempts = 0
-        let maxAttempts = newItems * 12        // Deckel gegen Endlosschleife bei viel Wasser/Wüste
+        let maxAttempts = newItems * 12        // guards against spinning on a mostly water/desert world
         while added < newItems && attempts < maxAttempts {
             attempts += 1
             let pos = randomPosition()
@@ -625,17 +628,16 @@ final class World {
         }
     }
 
-    // Streifen-basiertes Wachstum: Kapazität und Rate skalieren mit cos(Polabstand × π/2).
-    // Äquatorstreifen wachsen schnell und können viele Pflanzen tragen;
-    // Polstreifen sind karg und regenerieren langsam.
-    // Gesamtkapazität = maxFood (Energieerhaltung über alle Streifen).
+    // Band-based growth: capacity and rate both scale with cos(distance from the equator x pi/2).
+    // Equatorial bands grow fast and can carry many plants; polar bands are barren and slow to
+    // regenerate. Total capacity stays maxFood, so energy is conserved across all bands.
     private func growFoodWithGradient() {
         let strips     = 10
         let stripH     = size.height / CGFloat(strips)
         let equatorY   = Float(size.height / 2)
         let halfH      = Float(size.height / 2)
 
-        // Fruchtbarkeit und Gesamtnormierung pro Streifen
+        // Per-band fertility and the overall normalization
         var fertilities    = [Double](repeating: 0, count: strips)
         var totalFertility = 0.0
         for i in 0..<strips {
@@ -646,19 +648,19 @@ final class World {
             totalFertility += f
         }
 
-        // Pflanzen pro Streifen zählen (einmalig, O(n_plants))
+        // Count the plants per band (once, O(n_plants))
         var counts = [Int](repeating: 0, count: strips)
         for food in foodSources where food.type == .plant {
             counts[min(Int(food.position.y / stripH), strips - 1)] += 1
         }
 
-        // Logistisches Wachstum pro Streifen
+        // Logistic growth per band
         for i in 0..<strips {
             let f        = fertilities[i]
-            // Streifen-Kapazität proportional zur Fruchtbarkeit; Summe = maxFood
+            // Band capacity is proportional to fertility, and the bands sum to maxFood
             let capacity = Double(maxFood) * f / totalFertility
             let fill     = capacity > 0 ? min(1.0, Double(counts[i]) / capacity) : 1.0
-            // f² : Fruchtbarkeit steuert sowohl Kapazität als auch Rate → starker Äquatorvorteil
+            // f^2: fertility drives both capacity and rate, giving the equator a strong advantage
             let newItems = Int((f * foodGrowthRate * currentSeasonFactor * (1.0 - fill) * capacity).rounded())
 
             let minY = CGFloat(i) * stripH
@@ -673,7 +675,7 @@ final class World {
     }
 
     func decayFood() {
-        // Leichen verrotten und verschwinden — keine Energieentstehung.
+        // Corpses rot away and vanish; no energy is created in the process.
         var decayed = 0
         foodSources.removeAll {
             guard $0.type == .corpse, tickCount - $0.spawnedAt > 1200 else { return false }
@@ -683,7 +685,7 @@ final class World {
         corpseCount -= decayed
     }
 
-    // MARK: - Hilfsmethoden
+    // MARK: - Helpers
 
     func randomPosition() -> CGPoint {
         CGPoint(
@@ -692,9 +694,10 @@ final class World {
         )
     }
 
-    // Pflanzen-Spawn: mit Äquator-Gradient konzentrieren Pflanzen sich in Weltmitte (y-Achse).
-    // Rejection-Sampling: Akzeptanzwahrscheinlichkeit = cos(normierter Polabstand × π/2).
-    // Äquator (dy=0) → 100%, Pol (dy=1) → 0%. Mittlere Iterationen: ~1.6.
+    // Plant spawning: with the equator gradient on, plants concentrate around the middle of the
+    // world along the y axis. Rejection sampling with acceptance = cos(normalized distance from
+    // the equator x pi/2), so the equator (dy=0) accepts 100% and the poles (dy=1) none.
+    // Average iterations: ~1.6.
     private func spawnPosition() -> CGPoint {
         if biomesEnabled { return biomePlantPosition() }
         guard latitudeGradientEnabled else { return randomPosition() }
@@ -707,8 +710,8 @@ final class World {
         }
     }
 
-    // Startpflanzen biomgewichtet platzieren (gleiches Rejection-Kriterium wie growFoodWithBiomes).
-    // Deckel gegen Endlosschleife, falls die Welt überwiegend Wasser/Wüste ist.
+    // Places the initial plants weighted by biome, using the same rejection criterion as
+    // growFoodWithBiomes, with a cap in case the world is mostly water or desert.
     private func biomePlantPosition() -> CGPoint {
         let norm = Biome.maxFertility * 1.40
         for _ in 0..<40 {
@@ -716,11 +719,11 @@ final class World {
             let b   = biomeMap.biome(at: pos)
             if Float.random(in: 0...1) < b.fertility * b.growthFactor / norm { return pos }
         }
-        // Fallback: irgendeine passierbare Position (kein Startwasser-Baum)
+        // Fallback: any passable position at all (never a plant in open water)
         return creatureSpawnPosition()
     }
 
-    // Passierbare Startposition für Kreaturen — vermeidet Wasser, wenn Biome aktiv sind.
+    // A passable starting position for creatures — avoids water when biomes are enabled.
     private func creatureSpawnPosition() -> CGPoint {
         guard biomesEnabled else { return randomPosition() }
         for _ in 0..<40 {
@@ -730,9 +733,9 @@ final class World {
         return randomPosition()
     }
 
-    // Nachwuchs spawnt in einem zufälligen Radius um das Elterntier,
-    // damit Cluster sich nicht selbst verstärken. Landet der Wurf im Wasser,
-    // wird zurück auf die (passierbare) Elternposition gefallen.
+    // Offspring spawn within a random radius around the parent so that clusters do not
+    // reinforce themselves. If the litter would land in water, it falls back to the parent's
+    // own (passable) position.
     private func dispersedPosition(from origin: CGPoint, spread: CGFloat = 30) -> CGPoint {
         for _ in 0..<8 {
             let angle = CGFloat.random(in: 0..<(.pi * 2))
@@ -746,10 +749,10 @@ final class World {
         return origin
     }
 
-    // Zählt distinkte Arten per Greedy-Clustering auf den Markergenen: jede Kreatur kommt
-    // zum ersten Cluster, dessen Repräsentant näher als threshold liegt, sonst eröffnet sie
-    // einen neuen. Näherung (Reihenfolge-abhängig), aber O(n·k) mit kleinem k und für die
-    // Diversitäts-Anzeige völlig ausreichend.
+    // Counts distinct species by greedy clustering over the marker genes: each creature joins
+    // the first cluster whose representative is closer than the threshold, and otherwise opens
+    // a new one. It is an approximation and depends on iteration order, but it is O(n*k) with a
+    // small k and entirely adequate for a diversity readout.
     func countSpecies(threshold: Float) -> Int {
         var representatives: [DNA] = []
         for creature in creatures {

@@ -1,6 +1,6 @@
 import SpriteKit
 
-// MARK: - Geteilte Texturen (einmalig gerendert, dann GPU-gecacht)
+// MARK: - Shared textures (rendered once, then cached on the GPU)
 
 private enum SharedTextures {
     static let plant:  SKTexture = makeCircle(radius: 2.5,
@@ -25,12 +25,12 @@ private enum SharedTextures {
 
 final class GameScene: SKScene {
 
-    // MARK: - Node-Pool
+    // MARK: - Node pool
 
     private var creatureNodes: [UUID: CreatureNode] = [:]
     private var foodNodes:     [UUID: SKSpriteNode] = [:]
 
-    // MARK: - Selektion
+    // MARK: - Selection
 
     var selectedCreatureID: UUID? {
         didSet {
@@ -51,8 +51,8 @@ final class GameScene: SKScene {
         drawBiomes(world: world)
     }
 
-    // Statische Biom-Kacheln als Hintergrundebene (zPosition -10, hinter allem).
-    // Nur einmal pro Welt gezeichnet; reset() entfernt sie über removeAllChildren().
+    // Static biome tiles as a background layer (zPosition -10, behind everything). Drawn once
+    // per world; reset() clears them via removeAllChildren().
     private func drawBiomes(world: World) {
         guard world.biomesEnabled else { return }
         let map = world.biomeMap
@@ -77,24 +77,24 @@ final class GameScene: SKScene {
         setup(world: world)
     }
 
-    // MARK: - Update (von SimulationEngine aufgerufen — nur lesen, nicht verändern!)
+    // MARK: - Update (called by SimulationEngine — read only, never mutate!)
 
     func update(world: World) {
         syncCreatureNodes(world.creatures)
         syncFoodNodes(world.foodSources)
     }
 
-    // MARK: - Lebewesen
+    // MARK: - Creatures
 
     private func syncCreatureNodes(_ creatures: [Creature]) {
         let aliveIDs = Set(creatures.map { $0.id })
 
-        // Gestorbene entfernen
+        // Remove the dead
         for id in creatureNodes.keys where !aliveIDs.contains(id) {
             creatureNodes.removeValue(forKey: id)?.removeFromParent()
         }
 
-        // Vorhandene aktualisieren, neue hinzufügen
+        // Update the existing ones, add the new
         for creature in creatures {
             if let node = creatureNodes[creature.id] {
                 node.sync(with: creature)
@@ -107,12 +107,12 @@ final class GameScene: SKScene {
         }
     }
 
-    // MARK: - Maus
+    // MARK: - Mouse
 
     override func mouseDown(with event: NSEvent) {
         let loc = event.location(in: self)
         var nearestID:   UUID?    = nil
-        var nearestDist: CGFloat  = 20   // Klick-Toleranz in Pixeln
+        var nearestDist: CGFloat  = 20   // click tolerance in pixels
 
         for (id, node) in creatureNodes {
             let d = hypot(node.position.x - loc.x, node.position.y - loc.y)
@@ -126,17 +126,17 @@ final class GameScene: SKScene {
         onCreatureSelected?(nearestID)
     }
 
-    // MARK: - Nahrung
+    // MARK: - Food
 
     private func syncFoodNodes(_ foods: [FoodSource]) {
         let foodIDs = Set(foods.map { $0.id })
 
-        // Gefressene entfernen
+        // Remove what has been eaten
         for id in foodNodes.keys where !foodIDs.contains(id) {
             foodNodes.removeValue(forKey: id)?.removeFromParent()
         }
 
-        // Neue hinzufügen — alle Pflanzen teilen sich eine Textur → ein GPU-Draw-Call
+        // Add the new ones — all plants share one texture, hence a single GPU draw call
         for food in foods where foodNodes[food.id] == nil {
             let node: SKSpriteNode
             switch food.type {

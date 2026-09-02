@@ -2,8 +2,8 @@ import Foundation
 import CoreGraphics
 
 enum FoodType {
-    case plant    // natürlich gewachsen — wächst logistisch nach
-    case corpse   // Überreste eines gestorbenen Lebewesens — verfällt nach einiger Zeit
+    case plant    // grown naturally — regrows logistically
+    case corpse   // the remains of a dead creature — decays after a while
 }
 
 struct FoodSource {
@@ -11,7 +11,7 @@ struct FoodSource {
     var position: CGPoint
     var energyValue: Float
     var type: FoodType
-    let spawnedAt: Int   // Tick der Entstehung — für Verfall von corpse/waste
+    let spawnedAt: Int   // the tick it came into being — drives corpse decay
 
     init(position: CGPoint, energyValue: Float = 30, type: FoodType = .plant, spawnedAt: Int = 0) {
         self.position    = position

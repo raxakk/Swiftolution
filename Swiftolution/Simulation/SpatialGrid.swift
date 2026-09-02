@@ -5,18 +5,18 @@ final class SpatialGrid {
     let cellSize: CGFloat
     private let cols: Int
     private let rows: Int
-    // Flache Zell-Arrays statt Dictionary: kein Hashing, und removeAll(keepingCapacity:)
-    // pro Zelle erhält die Kapazität — nach Aufwärmphase ist rebuild() allokationsfrei.
+    // Flat cell arrays instead of a dictionary: no hashing, and removeAll(keepingCapacity:)
+    // per cell keeps the capacity, so rebuild() is allocation-free once warmed up.
     private var creatureCells: [[Creature]]
     private var foodCells:     [[FoodSource]]
 
-    // Eigenes, feineres Raster für die Pflanzendichte: Geruchsradien beginnen bei 30 px,
-    // die 80-px-Nachbarschaftszellen wären dafür zu grob.
+    // A separate, finer raster for plant density: smell radii start at 30 px, for which the
+    // 80 px neighbourhood cells would be far too coarse.
     private static let densityCellSize: CGFloat = 32
     private let dCols: Int
     private let dRows: Int
-    private var plantCounts: [Int32]           // Pflanzen je Dichtezelle
-    private var plantSAT:    [Int32]           // Summed-Area-Table, (dCols+1) × (dRows+1)
+    private var plantCounts: [Int32]           // plants per density cell
+    private var plantSAT:    [Int32]           // summed-area table, (dCols+1) x (dRows+1)
 
     init(cellSize: CGFloat, worldSize: CGSize) {
         self.cellSize = cellSize
@@ -32,7 +32,7 @@ final class SpatialGrid {
         self.plantSAT    = [Int32](repeating: 0, count: (dc + 1) * (dr + 1))
     }
 
-    // MARK: - Aufbau (einmal pro Tick)
+    // MARK: - Rebuild (once per tick)
 
     func rebuild(creatures: [Creature], food: [FoodSource]) {
         for i in creatureCells.indices { creatureCells[i].removeAll(keepingCapacity: true) }
@@ -42,9 +42,9 @@ final class SpatialGrid {
         rebuildPlantDensity(food: food)
     }
 
-    // Summed-Area-Table über die Pflanzenzahl je Zelle. Kostet O(Zellen) pro Tick und macht
-    // die Dichteabfrage danach O(1) — der Geruchsradius (bis 200 px) war zuvor der bindende
-    // Radius der Nahrungsabfrage in sense(), obwohl er dort nur eine Zahl beisteuert.
+    // Summed-area table over the plant count per cell. Costs O(cells) per tick and makes the
+    // density query O(1) afterwards. Before this, the smell radius (up to 200 px) was the
+    // binding radius of the food query in sense(), even though it contributes a single number.
     private func rebuildPlantDensity(food: [FoodSource]) {
         let cs = SpatialGrid.densityCellSize
         for i in plantCounts.indices { plantCounts[i] = 0 }
@@ -53,7 +53,7 @@ final class SpatialGrid {
             let row = min(max(Int(f.position.y / cs), 0), dRows - 1)
             plantCounts[row * dCols + col] += 1
         }
-        // sat[r+1][c+1] = sat[r][c+1] + Zeilensumme bis c. Zeile 0 und Spalte 0 bleiben 0 (Rand).
+        // sat[r+1][c+1] = sat[r][c+1] + row sum up to c. Row 0 and column 0 stay 0 (the border).
         let w = dCols + 1
         for r in 0..<dRows {
             var rowSum: Int32 = 0
@@ -66,10 +66,10 @@ final class SpatialGrid {
         }
     }
 
-    // MARK: - Abfragen (allokationsfrei — Kandidaten werden per Closure geliefert)
+    // MARK: - Queries (allocation-free — candidates are handed to a closure)
 
-    // Liefert alle Kandidaten in den Zellen rund um point. Kein Distanz-Filter —
-    // der Aufrufer prüft selbst (typisch mit quadrierter Distanz).
+    // Yields every candidate in the cells around point. No distance filter — the caller does
+    // that itself, typically on squared distances.
     func forEachCreature(near point: CGPoint, within radius: CGFloat, _ body: (Creature) -> Void) {
         forEachCell(near: point, radius: radius) { cell in
             for c in creatureCells[cell] { body(c) }
@@ -82,10 +82,10 @@ final class SpatialGrid {
         }
     }
 
-    // Pflanzen im Umkreis — O(1) über die Summed-Area-Table. Näherung: gezählt wird die
-    // umschließende Box (Raster 32 px) statt des Kreises, skaliert mit π/4 auf die
-    // erwartete Kreisfläche. Für einen Dichtewert (der ohnehin auf [0,1] gestaucht wird)
-    // genügt das; ein exakter Zähl-Scan zwang den Nahrungs-Pass auf den Geruchsradius.
+    // Plants within a radius — O(1) via the summed-area table. It is an approximation: the
+    // enclosing box (32 px raster) is counted rather than the circle, then scaled by pi/4 to
+    // the expected circle area. That is ample for a density value which gets clamped to [0,1]
+    // anyway, whereas an exact counting scan forced the food pass out to the smell radius.
     func plantsNear(_ point: CGPoint, within radius: CGFloat) -> Float {
         let cs = SpatialGrid.densityCellSize
         let c0 = min(max(Int((point.x - radius) / cs), 0), dCols - 1)
@@ -97,15 +97,15 @@ final class SpatialGrid {
         let b = plantSAT[r0 * w + (c1 + 1)]
         let c = plantSAT[(r1 + 1) * w + c0]
         let d = plantSAT[(r1 + 1) * w + (c1 + 1)]
-        return Float(d - b - c + a) * 0.7853982   // π/4: Box → Kreis
+        return Float(d - b - c + a) * 0.7853982   // pi/4: box -> circle
     }
 
-    // MARK: - Intern
+    // MARK: - Internals
 
-    // Zellen der Bounding-Box des Abfragekreises — enthält jede Zelle, die einen Punkt
-    // innerhalb von radius halten kann. Alle Aufrufer prüfen die Distanz selbst, deshalb
-    // darf der Scan so eng wie möglich sein: ein Block in Zellschritten (±ceil(radius/cellSize))
-    // scannte für einen eatRadius von ~12 px 3×3 Zellen = 57.600 px² statt 452 px².
+    // The cells of the query circle's bounding box — every cell that can hold a point within
+    // radius. All callers check the true distance themselves, so the scan may be as tight as
+    // possible: a block in cell steps (+/-ceil(radius / cellSize)) scanned 3x3 cells for an
+    // eatRadius of ~12 px, i.e. 57,600 px2 of candidates instead of 452 px2.
     @inline(__always)
     private func forEachCell(near point: CGPoint, radius: CGFloat, _ body: (Int) -> Void) {
         let colLo = min(max(Int((point.x - radius) / cellSize), 0), cols - 1)
