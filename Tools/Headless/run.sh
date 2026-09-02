@@ -37,7 +37,9 @@ fi
 
 if [[ $needs_build -eq 1 ]]; then
   echo "» kompiliere headless-Binary …" >&2
-  swiftc -O "${SOURCES[@]}" -o "$BIN"
+  # -wmo: modulweite Optimierung erlaubt Inlining über Dateigrenzen (~16% schnellere Ticks).
+  # Die App baut Release ohnehin mit wholemodule — ohne das Flag war nur der Runner langsamer.
+  swiftc -O -wmo "${SOURCES[@]}" -o "$BIN"
 fi
 
 exec "$BIN" "$@"
