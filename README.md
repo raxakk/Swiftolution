@@ -59,6 +59,12 @@ any creature to open an inspector showing its genome, its current sensor reading
 and what its network is deciding to do. Most parameters take effect immediately;
 world size, starting population and biomes need a restart.
 
+**Start by pushing food capacity to the top of its range.** The default of 500 is
+scarce for the default 2400x1800 world and the starting population reliably dies
+out; at maximum food it establishes itself and holds the population ceiling. Once
+it is stable, turn the food back down to raise selection pressure — that is the
+interesting part. The reasoning is in the design notes.
+
 The interface is available in English and German.
 
 ## Watching it headlessly
