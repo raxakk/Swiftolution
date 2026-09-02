@@ -207,20 +207,21 @@ final class World {
             }
         }
 
-        // Ein Nahrungs-Pass für Sicht UND Geruch (gemeinsamer Query-Radius)
-        let smellR   = Float(creature.olfactionSmellRadius)
-        let smellRSq = smellR * smellR
+        // Geruch: omnidirektionale Pflanzendichte per O(1)-Rasterabfrage. Als Zähl-Scan
+        // zwang sie den Nahrungs-Pass auf max(Sicht, Geruch) — der Geruchsradius ist meist
+        // der größere (median 115 px gegen 94 px Sicht), obwohl er nur diese eine Zahl liefert.
+        let plantsSmelled = grid.plantsNear(creature.position,
+                                            within: creature.olfactionSmellRadius)
+
+        // Nahrungs-Pass für die Sicht: nächste Nahrung + Anzahl im Sichtkegel.
         var nearestFoodDx: Float = 0, nearestFoodDy: Float = 0
         var nearestFoodDistSq   = Float.greatestFiniteMagnitude
         var nearestFoodIsCorpse = false
         var foodInFOVCount = 0
-        var plantsSmelled  = 0
-        grid.forEachFood(near: creature.position,
-                         within: max(sightRadius, creature.olfactionSmellRadius)) { food in
+        grid.forEachFood(near: creature.position, within: sightRadius) { food in
             let dx = Float(food.position.x) - px
             let dy = Float(food.position.y) - py
             let distSq = dx * dx + dy * dy
-            if food.type == .plant && distSq < smellRSq { plantsSmelled += 1 }
             if distSq < sightRSq && inFOV(dx, dy, distSq) {
                 foodInFOVCount += 1
                 if distSq < nearestFoodDistSq {
@@ -294,7 +295,7 @@ final class World {
         }
         let visibleCreatureCount = min(Float(visibleCount), 10) / 10
         let visibleFoodCount     = min(Float(foodInFOVCount), 10) / 10
-        let localPlantDensity    = min(Float(plantsSmelled) / 20.0, 1.0)
+        let localPlantDensity    = min(plantsSmelled / 20.0, 1.0)
         let localDensity         = min(Float(densityCount) / 8.0, 1.0)
 
         var avgNearbyHeading: Float = 0
