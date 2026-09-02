@@ -45,13 +45,16 @@ final class SpatialGrid {
 
     // MARK: - Intern
 
+    // Zellen der Bounding-Box des Abfragekreises — enthält jede Zelle, die einen Punkt
+    // innerhalb von radius halten kann. Alle Aufrufer prüfen die Distanz selbst, deshalb
+    // darf der Scan so eng wie möglich sein: ein Block in Zellschritten (±ceil(radius/cellSize))
+    // scannte für einen eatRadius von ~12 px 3×3 Zellen = 57.600 px² statt 452 px².
     @inline(__always)
     private func forEachCell(near point: CGPoint, radius: CGFloat, _ body: (Int) -> Void) {
-        let r    = Int(ceil(radius / cellSize))
-        let cCol = min(max(Int(point.x / cellSize), 0), cols - 1)
-        let cRow = min(max(Int(point.y / cellSize), 0), rows - 1)
-        let rowLo = max(cRow - r, 0), rowHi = min(cRow + r, rows - 1)
-        let colLo = max(cCol - r, 0), colHi = min(cCol + r, cols - 1)
+        let colLo = min(max(Int((point.x - radius) / cellSize), 0), cols - 1)
+        let colHi = min(max(Int((point.x + radius) / cellSize), 0), cols - 1)
+        let rowLo = min(max(Int((point.y - radius) / cellSize), 0), rows - 1)
+        let rowHi = min(max(Int((point.y + radius) / cellSize), 0), rows - 1)
         for row in rowLo...rowHi {
             let base = row * cols
             for col in colLo...colHi { body(base + col) }
