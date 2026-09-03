@@ -196,7 +196,12 @@ final class SimulationEngine: ObservableObject {
 
 struct SimulationConfig {
     // Takes effect immediately (live)
-    var foodCapacity:     Int    = 500     // reference for 800x600; scales with sqrt(world area)
+    // Reference for 800x600; scales with sqrt(world area). Defaults to the top of the slider's
+    // range on purpose: this is the bootstrap phase of the intended workflow — establish a
+    // population at maximum food, then turn it down to raise selection pressure. Measured
+    // headlessly on the default world, a starting population survives 4000 ticks in 6 of 6 runs
+    // at 3000 and in 0 of 4 at 1500, so a lower default would mostly show the user an extinction.
+    var foodCapacity:     Int    = 3000
     var foodGrowthRate:   Double = 0.05
     var mutationRate:     Float  = 0.05
     var mutationStrength: Float  = 0.10

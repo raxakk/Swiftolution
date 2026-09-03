@@ -139,8 +139,13 @@ The intended workflow is to start a run with food capacity at maximum, let a
 stable population establish itself, and only then reduce the capacity to raise
 selection pressure. A run started under scarcity mostly dies before evolution has
 anything to work with — early starvation in that situation is the setup, not a
-bug. The headless runner supports this directly via `--reduce-food-at T C`, which
-is repeatable for stepwise reductions.
+bug. Both the app and the headless runner therefore default to the maximum, and
+`--reduce-food-at T C` performs the reduction, repeatably for stepwise steps.
+
+How sharp the threshold is, measured on the default world (2400x1800, 80 starting
+creatures, 4000 ticks, no biomes): at capacity 1500 the population died out in 4 of
+4 runs, at 2500 in 2 of 6, and at 3000 in 0 of 6. There is not much of a slope
+between "reliably extinct" and "reliably at the ceiling".
 
 ### Food capacity scales with the square root of area
 

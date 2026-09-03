@@ -18,7 +18,7 @@ struct Options {
     var width           = 2400
     var height          = 1800
     var creatures       = 80
-    var foodCapacity    = 500      // reference for 800x600, scaled by sqrt(area) as in the GUI
+    var foodCapacity    = 3000     // reference for 800x600, scaled by sqrt(area) as in the GUI
     var foodGrowthRate  = 0.05
     var mutationRate:     Float = 0.05
     var mutationStrength: Float = 0.10
@@ -54,7 +54,7 @@ func printUsage() {
       --width N            world width in px (default 2400)
       --height N           world height in px (default 1800)
       --creatures N        starting population (default 80)
-      --food-capacity N    food capacity, sqrt-scaled (default 500)
+      --food-capacity N    food capacity, sqrt-scaled (default 3000, the bootstrap value)
       --growth F           food growth rate (default 0.05)
       --mutation F         mutation rate (default 0.05)
       --mutation-strength F mutation strength (default 0.10)
