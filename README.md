@@ -78,7 +78,7 @@ The interface is available in English and German.
 `Tools/Headless/run.sh` compiles the UI-free core with `swiftc` and runs the
 simulation without a window, uncapped — several thousand ticks per second. No
 Xcode project involved. It exists so that a run can be observed and analysed
-programmatically, by a script or by an LLM agent, the way a human watches the GUI.
+programmatically, by a script or by an LLM agent.
 
 ```bash
 ./Tools/Headless/run.sh --ticks 20000 --interval 1000 --biomes
