@@ -8,6 +8,12 @@ scavenging, water avoidance and the split into species all have to evolve, or no
 Written in Swift with SwiftUI, SpriteKit and Swift Charts. About 4,600 lines, no
 dependencies.
 
+![The simulator running: a biome world on the left, the inspector for a selected creature on the right, population and trait charts below.](docs/screenshot.jpg)
+
+Above: a run about 5,800 ticks in, with biomes enabled. The selected creature is a
+herbivore standing in forest; the sidebar shows its genome and, below that, what
+its network is deciding to do right now.
+
 ## What is actually simulated
 
 **Creatures.** Every creature carries a genome of 532 floats: 14 named genes plus
