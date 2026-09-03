@@ -120,19 +120,20 @@ classification of causes of death.
 
 ```
 Swiftolution/Simulation/   the model: World, Creature, DNA, NeuralNetwork,
-                           Biome, SpatialGrid, FoodSource — plus SimulationEngine
-                           and StatisticsTracker, which drive it for the UI
+                           Biome, SpatialGrid, FoodSource
+Swiftolution/Engine/       SimulationEngine and StatisticsTracker — the clock and
+                           the observable layer the views bind to
 Swiftolution/Rendering/    SpriteKit scene and creature nodes
 Swiftolution/UI/           SwiftUI sidebar, inspector and charts
 Tools/Headless/            the console runner
 docs/DESIGN.md             why the simulation is tuned the way it is
 ```
 
-The simulation core — everything up to and including `World` — imports nothing but
-Foundation and CoreGraphics, which is what lets the headless runner compile it on
-its own with `swiftc`. `SimulationEngine` and `StatisticsTracker` live in the same
-directory but are the observable layer the views bind to; they pull in Combine and
-SpriteKit, so the runner leaves them out.
+Every file in `Simulation/` imports nothing but Foundation and CoreGraphics. That is
+what lets the headless runner compile the directory on its own with `swiftc`, and it
+is why the runner globs it rather than listing files: anything added there is part of
+the model by construction. The Combine and SpriteKit dependencies start one directory
+over, in `Engine/`.
 
 ## License
 

@@ -13,17 +13,11 @@ OUT="$DIR/.build"
 BIN="$OUT/swiftolution-headless"
 mkdir -p "$OUT"
 
-# The UI-free core (order does not matter — Swift resolves within a module by itself)
-SOURCES=(
-  "$SIM/DNA.swift"
-  "$SIM/FoodSource.swift"
-  "$SIM/NeuralNetwork.swift"
-  "$SIM/SpatialGrid.swift"
-  "$SIM/Biome.swift"
-  "$SIM/Creature.swift"
-  "$SIM/World.swift"
-  "$DIR/main.swift"
-)
+# Everything in Simulation/ plus the runner. A glob is safe because that directory is
+# UI-free by construction: the observable layer that pulls in Combine and SpriteKit
+# lives in Engine/. A hand-maintained list would silently fall behind a new file.
+# Order does not matter — Swift resolves names within a module by itself.
+SOURCES=( "$SIM"/*.swift "$DIR/main.swift" )
 
 # Only rebuild when a source file is newer than the binary.
 needs_build=0
