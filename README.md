@@ -5,8 +5,7 @@ small neural network encoded in its genome, live in a wrap-around world with
 plants, corpses, terrain and seasons. Nothing is scripted: hunting, herding,
 scavenging, water avoidance and the split into species all have to evolve, or not.
 
-Written in Swift with SwiftUI, SpriteKit and Swift Charts. About 4,600 lines, no
-dependencies.
+Written in Swift with SwiftUI, SpriteKit and Swift Charts. No dependencies.
 
 ![The simulator running: a biome world on the left, the inspector for a selected creature on the right, population and trait charts below.](docs/screenshot.jpg)
 
@@ -110,11 +109,11 @@ scarcity usually dies before evolution has anything to work with.
 xcodebuild test -project Swiftolution.xcodeproj -scheme Swiftolution -destination 'platform=macOS'
 ```
 
-61 unit tests over the simulation core: genetics and mutation bounds, the feeding
-and toxin rules, energy conservation across reproduction and predation, seasons,
-corpse decay, biome invariants (including a 400-tick integration run asserting
-that nothing ever ends up in water), directional terrain perception, and the
-classification of causes of death.
+The tests cover the simulation core: genetics and mutation bounds, the feeding and
+toxin rules, energy conservation across reproduction and predation, seasons, corpse
+decay, biome invariants (including an integration run asserting that nothing ever
+ends up in water), directional terrain perception, and the classification of causes
+of death.
 
 ## Layout
 
