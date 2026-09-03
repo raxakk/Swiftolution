@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
+
+# A newer push supersedes a running job instead of queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Pinned rather than macos-latest: that label moves on to the next major release
+    # eventually, and this project pins MACOSX_DEPLOYMENT_TARGET to 26.3. Bump it
+    # deliberately, not by surprise. macos-26 ships Xcode 26.6 by default.
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version
+
+      # Ad-hoc signing, because a runner has no signing identity and DEVELOPMENT_TEAM
+      # is deliberately empty. On Apple silicon a binary has to be signed at least
+      # ad-hoc to run at all, so the tests would not launch without this.
+      #
+      # UI tests are skipped: they need a GUI session and only cover Xcode's
+      # launch-performance boilerplate.
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project Swiftolution.xcodeproj \
+            -scheme Swiftolution \
+            -destination 'platform=macOS' \
+            -skip-testing:SwiftolutionUITests \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES
+
+      # Guards the architecture invariant: Simulation/ has to stay compilable on its
+      # own with swiftc. Import SwiftUI or SpriteKit in there and the app still
+      # builds — only this step notices.
+      - name: Headless runner
+        run: ./Tools/Headless/run.sh --ticks 2000 --interval 2000
