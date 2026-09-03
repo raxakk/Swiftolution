@@ -5,7 +5,7 @@ small neural network encoded in its genome, live in a wrap-around world with
 plants, corpses, terrain and seasons. Nothing is scripted: hunting, herding,
 scavenging, water avoidance and the split into species all have to evolve, or not.
 
-Written in Swift with SwiftUI, SpriteKit and Swift Charts. No dependencies.
+Written in Swift with SwiftUI, SpriteKit and Swift Charts.
 
 ![The simulator running: a biome world on the left, the inspector for a selected creature on the right, population and trait charts below.](docs/screenshot.jpg)
 
