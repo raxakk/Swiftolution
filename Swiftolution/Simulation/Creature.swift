@@ -40,6 +40,17 @@ final class Creature {
         let progress = Float(age) / Float(dna.maxAge)
         return max(0, (progress - 0.7) / 0.3)
     }
+    // Working memory carried from one tick to the next: the network's own hidden activations,
+    // fed back in as inputs. Starts empty at birth, so nothing is inherited but the weights
+    // that decide what to write into it.
+    var brainMemory = SIMD4<Float>()
+
+    // Internal clock in [-1,1]. The only input that changes with nothing happening around the
+    // creature, which is what lets behaviour run without an external trigger.
+    var oscillator: Float {
+        sin(2 * .pi * Float(age) / dna.oscillatorPeriod)
+    }
+
     var lastAction: ActionOutput?
     // The last perception, only filled in when World.sensorRecording is on (tracing and
     // diagnostics). It is what makes a network decision explainable: perception -> action.

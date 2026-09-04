@@ -40,7 +40,7 @@ struct Options {
     var traceTo         = -1       // -1 means traceFrom + 200, a sensible default window
     var traceEvery      = 1
     var traceCreatures  = 3
-    var traceWeights    = false    // raw network weights in the profile (518 numbers per creature!)
+    var traceWeights    = false    // raw network weights in the profile (~600 numbers per creature!)
 }
 
 func printUsage() {
@@ -76,7 +76,7 @@ func printUsage() {
       --trace-to T         trace window up to tick T (default: traceFrom + 200)
       --trace-every N      trace only every Nth tick (default 1)
       --trace-creatures N  how many individuals to follow (default 3: oldest, fittest, random)
-      --trace-weights      include the raw network weights in the profile (518 numbers per creature)
+      --trace-weights      include the raw network weights in the profile (~600 numbers per creature)
       --samples N          sample individuals shown by --detail/--json (default 3)
       --map-cols N         width of the ASCII world map (default 60)
       --csv                emit a CSV table
@@ -404,7 +404,8 @@ func printTraceLine(_ c: Creature, _ world: World, _ o: Options) {
         + " | C(a\(sg(s.angleToCreature)) d\(n2(s.distanceToCreature)) v\(sg(s.approachVelocity)) n\(n2(s.visibleCreatureCount, 1)))"
         + " | dn\(n2(s.localDensity)) hd\(sg(s.avgNearbyHeading)) sm\(n2(s.localPlantDensity)) fd\(n2(s.recentFeedingRate)) sn\(n2(s.ownSenescence))"
         + " | fert\(n2(s.localFertility)) cov\(n2(s.localCover)) dif\(n2(s.localDifficulty))"
-        + " | bear .\(sg(s.terrainBearingGrassland)) f\(sg(s.terrainBearingForest)) d\(sg(s.terrainBearingDesert)) w\(sg(s.terrainBearingWetland)) ~\(sg(s.terrainBearingWater))")
+        + " | bear .\(sg(s.terrainBearingGrassland)) f\(sg(s.terrainBearingForest)) d\(sg(s.terrainBearingDesert)) w\(sg(s.terrainBearingWetland)) ~\(sg(s.terrainBearingWater))"
+        + " | mem \(sg(s.memory0)) \(sg(s.memory1)) \(sg(s.memory2)) \(sg(s.memory3)) osc\(sg(s.oscillator)) T\(Int(c.dna.oscillatorPeriod))")
     if let a = c.lastAction {
         print("       ⇒ turn\(sg((a.turnAngle - 0.5) * 2)) spd\(n2(a.speed)) rep\(n2(a.wantsToReproduce))"
             + " atk\(n2(a.wantsToAttack)) eatP\(n2(a.wantsToEatPlant)) eatC\(n2(a.wantsToEatCorpse))")

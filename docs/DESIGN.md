@@ -131,6 +131,62 @@ remains evolvable and costly.
 Measured on a live trace, this took the share of creature-ticks carrying a terrain
 signal (>= 0.05) from ~0% to 51%.
 
+## The brain needs state
+
+A network evaluated fresh every tick is a reflex, not a mind. Whatever it
+does is a function of the current instant, so any behaviour that spans more
+than one tick is not merely unlearned, it is **unrepresentable**. A creature
+cannot pursue prey that briefly leaves its sight cone: the prey is not
+"gone for a moment", it never existed. It cannot keep fleeing, cannot finish
+a search sweep, cannot act on "I have been hungry for a while".
+
+Two additions fix this, and both are deliberately minimal.
+
+### Four context values
+
+The first four hidden activations are carried over and fed back in as inputs
+next tick. Deliberately *not* a hand-designed memory: no slot means "last
+seen prey direction". They are four unnamed numbers, and selection decides
+what goes in them. Anything else would be the designer writing the behaviour
+rather than the evolution finding it.
+
+Why four, and why the hidden layer rather than the outputs: `minHiddenCount`
+is 4, so those activations exist in every brain regardless of `brainSize`,
+and no special case is needed anywhere. Hidden values also carry more than
+the six outputs do, since they are what the outputs are computed *from*.
+
+The count is kept small on purpose. Recurrence is harder for evolution to
+tame than feed-forward weights: a unit can drive itself into `tanh`
+saturation and latch there, and the wider the feedback the more of the
+genome is spent on it. Four is enough for a handful of persistent internal
+distinctions and small enough that a bad loop costs little.
+
+### One oscillator
+
+`sin(2π × age / oscillatorPeriod)`, the period an evolvable gene over
+`10..200` ticks.
+
+The argument for it is sharper than it looks. Every other input is driven
+from outside. A creature standing in an empty region therefore has constant
+inputs, hence constant outputs, and walks a perfectly straight line until
+something enters its perception. Undirected search — the thing an animal
+does when it has no information — is not a strategy it can fail to learn, it
+is a strategy the architecture forbids.
+
+The oscillator is the cheapest possible fix: one input, one gene. Zigzag
+sweeps, patrol loops and pacing all become expressible, and the search
+frequency is itself under selection, so a hunter and a grazer can settle on
+different rhythms. biosim4 carries the same input and it shows up constantly
+in its evolved networks, which is decent outside evidence that it earns the
+slot.
+
+### What it costs
+
+Inputs go from 25 to 30, weights from 518 to 598 (+15%), and each creature
+carries four extra floats. `activate` gains one four-element copy; the
+allocation-free forward pass and the parallel perception phase are both
+untouched, since a creature reads and writes only its own context.
+
 ## Running the simulation
 
 ### Bootstrap at maximum food, then reduce
@@ -169,7 +225,7 @@ alike.
   observer drains it after each tick. Off by default, at zero cost when disabled.
 - **Sensor recording.** Optionally stores each creature's last sensor input, which
   makes a network decision explainable as perception -> action. Off by default,
-  since it costs `population x 25` floats per tick.
+  since it costs `population x 30` floats per tick.
 - **The headless runner** (`Tools/Headless/run.sh`) exposes all of this: aggregate
   tables, an ASCII world map, trait histograms, NDJSON snapshots and events, and a
   behaviour trace that follows individual creatures tick by tick.

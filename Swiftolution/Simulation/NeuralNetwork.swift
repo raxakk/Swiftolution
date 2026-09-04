@@ -4,7 +4,13 @@ struct NeuralNetwork {
 
     // MARK: - Architecture
 
-    static let inputCount    = 25
+    static let sensorCount   = 25
+    // Recurrent context: the first `contextCount` hidden activations of the previous tick are
+    // fed back in as inputs, giving the network a working memory across ticks. minHiddenCount
+    // is 4, so these four values exist no matter how small a creature's brain is.
+    static let contextCount  = 4
+    // 25 sensors + 4 context + 1 oscillator
+    static let inputCount    = sensorCount + contextCount + 1
     static let minHiddenCount = 4
     static let maxHiddenCount = 16
     static let outputCount   = 6   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEatPlant, wantsToEatCorpse
@@ -75,7 +81,11 @@ struct NeuralNetwork {
 
     // The hottest path in the simulation (population x 30 calls per frame): input and hidden
     // values live in a stack buffer, with no heap allocation.
-    func activate(inputs: SensorInput) -> ActionOutput {
+    //
+    // `memory` carries the recurrent context: on entry it holds the previous tick's first four
+    // hidden activations (already part of `inputs`), on return the current tick's. The caller
+    // owns it, so the network itself stays a value type with no per-creature state.
+    func activate(inputs: SensorInput, memory: inout SIMD4<Float>) -> ActionOutput {
         let hc = hiddenCount
         let ic = NeuralNetwork.inputCount
         return withUnsafeTemporaryAllocation(of: Float.self, capacity: ic + hc) { buf in
@@ -90,6 +100,9 @@ struct NeuralNetwork {
                     }
                 }
             }
+            // Hand the context to the next tick. Hidden values are tanh outputs, so the
+            // feedback loop is bounded by construction and cannot diverge numerically.
+            for c in 0..<NeuralNetwork.contextCount { memory[c] = buf[ic + c] }
             var out = (Float(0), Float(0), Float(0), Float(0), Float(0), Float(0))
             weightsHO.withUnsafeBufferPointer { wHO in
                 biasO.withUnsafeBufferPointer { bO in
@@ -144,6 +157,16 @@ struct SensorInput {
     var terrainBearingDesert:      Float
     var terrainBearingWetland:     Float
     var terrainBearingWater:       Float
+    // Working memory: the first four hidden activations of the previous tick, in [-1,1].
+    // Nothing assigns them a meaning; whatever it pays to remember is what evolution puts here.
+    var memory0:                   Float
+    var memory1:                   Float
+    var memory2:                   Float
+    var memory3:                   Float
+    // Internal clock: sin(2 pi * age / oscillatorPeriod), in [-1,1]. It is the only input that
+    // varies without an external cause, which is what makes self-driven behaviour (searching
+    // in a zigzag, patrolling) representable at all.
+    var oscillator:                Float
 
     // Writes the inputs into a (stack) buffer; the order defines the network's input layout.
     func write(to buf: UnsafeMutableBufferPointer<Float>) {
@@ -172,6 +195,11 @@ struct SensorInput {
         buf[22] = terrainBearingDesert
         buf[23] = terrainBearingWetland
         buf[24] = terrainBearingWater
+        buf[25] = memory0
+        buf[26] = memory1
+        buf[27] = memory2
+        buf[28] = memory3
+        buf[29] = oscillator
     }
 }
 

@@ -15,18 +15,21 @@ its network is deciding to do right now.
 
 ## What is actually simulated
 
-**Creatures.** Every creature carries a genome of 532 floats: 14 named genes plus
-518 neural network weights. The named genes are speed, sight radius, sight angle,
+**Creatures.** Every creature carries a genome of 613 floats: 15 named genes plus
+598 neural network weights. The named genes are speed, sight radius, sight angle,
 turn rate, olfaction, size, aggression, maximum age, reproduction threshold,
-litter size, brain size and an RGB colour. Everything else about its behaviour
-comes out of the network.
+litter size, brain size, the period of an internal clock, and an RGB colour.
+Everything else about its behaviour comes out of the network.
 
-**Brains.** A feed-forward network with 25 sensor inputs, one hidden layer of 4-16
-neurons (the size is itself a gene) and 6 outputs: turn, speed, reproduce, attack,
-eat plants, eat carrion. The inputs cover the nearest food and creature in the
-field of view, local density, herding direction, the colour of the nearest
-creature, own energy, own senescence, recent feeding rate, plant smell, the biome
-underfoot, and a directional bearing per biome across the landscape.
+**Brains.** A network with 30 inputs, one hidden layer of 4-16 neurons (the size
+is itself a gene) and 6 outputs: turn, speed, reproduce, attack, eat plants, eat
+carrion. 25 of the inputs are sensory: the nearest food and creature in the field
+of view, local density, herding direction, the colour of the nearest creature,
+own energy, own senescence, recent feeding rate, plant smell, the biome underfoot,
+and a directional bearing per biome across the landscape. The remaining five are
+internal — four values the network wrote for itself last tick, which give it a
+working memory across ticks, and an oscillator whose period is a gene, which lets
+behaviour run without an external trigger.
 
 **Metabolism.** Energy is conserved. Maintenance costs scale quadratically with
 the traits that drive them, so specialists beat generalists. Body mass is stored
@@ -99,7 +102,7 @@ Beyond the aggregate table it offers:
 - `--json`: NDJSON snapshots, one object per interval
 - `--events`: a live stream of births and deaths, with cause, per tick
 - `--trace`: a behaviour trace following individual creatures tick by tick, with
-  all 25 sensor inputs and 6 outputs, so a decision can be read as
+  all 30 inputs and 6 outputs, so a decision can be read as
   perception -> action
 - `--reduce-food-at T C`: change the food capacity mid-run, repeatable
 

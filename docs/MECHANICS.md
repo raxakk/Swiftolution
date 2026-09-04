@@ -64,8 +64,8 @@ uncapped.
 
 ## Genome
 
-A creature's entire hereditary makeup is one flat array of **532 floats**,
-each in `[0, 1]`: 14 named genes followed by 518 raw neural network weights.
+A creature's entire hereditary makeup is one flat array of **613 floats**,
+each in `[0, 1]`: 15 named genes followed by 598 raw neural network weights.
 
 | # | Gene | Meaning |
 |---|------|---------|
@@ -81,7 +81,8 @@ each in `[0, 1]`: 14 named genes followed by 518 raw neural network weights.
 | 11 | `sightAngle` | field of view, `120°..360°` |
 | 12 | `turnRate` | steering agility |
 | 13 | `olfaction` | smell range |
-| 14-531 | *(network weights)* | see [Brain](#brain) |
+| 14 | `oscillatorPeriod` | period of the internal clock, `10..200` ticks |
+| 15-612 | *(network weights)* | see [Brain](#brain) |
 
 DNA always carries weights sized for the **maximum** brain (16 hidden
 neurons), regardless of the creature's actual `brainSize`. That keeps every
@@ -109,7 +110,7 @@ deltas, chosen once the gene is picked for mutation:
 The result is clamped back into `[0, 1]`.
 
 **Crossover** (`DNA.crossed`): single-point. A random split index is chosen
-once; the child takes genes `[0, split)` from one parent and `[split, 532)`
+once; the child takes genes `[0, split)` from one parent and `[split, 613)`
 from the other. Because gene indices are fixed, this can split a network
 weight in the middle of a neuron's input row. The resulting recombination is
 somewhat destructive at the network level by design, matching how crossover
@@ -117,11 +118,41 @@ would work in a real (non-network) genome.
 
 ## Brain
 
-A feed-forward network, one hidden layer, evaluated fresh every tick:
+A feed-forward network with one hidden layer and a recurrent context:
 
 ```
-25 inputs -> [4..16 hidden, tanh] -> 6 outputs, sigmoid
+25 sensors + 4 context + 1 oscillator -> [4..16 hidden, tanh] -> 6 outputs, sigmoid
+                     ^                                  |
+                     +---- previous tick, first 4 ------+
 ```
+
+The **context** (`Creature.brainMemory`, a `SIMD4<Float>`) is the first four
+hidden activations of the previous tick, fed back in as inputs. It is the
+network's only state: without it the brain is a pure reflex, and behaviour
+that spans more than one tick — pursuing something that went out of sight,
+continuing a flight, staying on a search pattern — cannot be represented at
+all. Nothing assigns the four values a meaning; what it pays to remember is
+what selection puts there.
+
+Four is not arbitrary: `minHiddenCount` is 4, so those activations exist in
+every brain no matter how small, and no special-casing is needed. The values
+are `tanh` outputs, so the feedback loop is bounded by construction and
+cannot diverge numerically. It *can* latch — a hidden unit driven into
+saturation stays there — which is a behavioural outcome selection can act
+on, not a numerical failure.
+
+The **oscillator** (input 29) is `sin(2π × age / oscillatorPeriod)`, with the
+period an evolvable gene (`10..200` ticks). It is the only input that changes
+without an external cause. Without it a creature with nothing in sight has
+constant inputs, hence a constant output, and walks in a perfectly straight
+line forever; with it, self-driven behaviour — zigzag search, patrolling,
+looping back — becomes representable, and its frequency is under selection.
+It starts at exactly 0 at age 0, so birth is not a kick.
+
+The context is owned by the creature, not by `NeuralNetwork`: `activate`
+takes it `inout`, so the network stays a stateless value type. Each parallel
+iteration in `World.moveCreatures` reads and writes only its own creature's
+memory, so the perception phase remains race free.
 
 Hidden layer size is itself a gene (`brainSize`), interpolated between
 `NeuralNetwork.minHiddenCount` (4) and `maxHiddenCount` (16). Weights are
@@ -135,8 +166,9 @@ no heap allocation, since it is the hottest path in the simulation
 
 ### Sensors
 
-25 inputs, built once per creature per tick by `World.sense(for:)`. Two
-perception rules apply throughout:
+30 inputs, built once per creature per tick by `World.sense(for:)`: 25
+sensory readings, the 4 context values and the oscillator. Two perception
+rules apply throughout:
 
 - **Food and the nearest creature** are only perceived inside the sight
   cone, a field of view of `sightAngle` (`120°` at gene 0 to full `360°` at
@@ -166,6 +198,8 @@ perception rules apply throughout:
 | 18 | local cover | `[0, 1]` | biome underfoot |
 | 19 | local difficulty | `[0, 1]` | biome underfoot |
 | 20-24 | terrain bearing (grassland/forest/desert/wetland/water) | `±0.24..0.36` in practice | see [Biomes](#biomes) |
+| 25-28 | working memory | `[-1, 1]` each | previous tick's first 4 hidden activations |
+| 29 | oscillator | `[-1, 1]` | `sin(2π × age / oscillatorPeriod)` |
 
 Distances and the "nearest creature" search share a single pass over the
 spatial grid per creature, at `max(sightRadius, 80)`, so density and herding
@@ -676,7 +710,7 @@ Built to be watched, by both the app UI and automated tooling:
   birth/death events (`SimEvent`), including death cause and position,
   meant to be drained once per tick by an external observer.
 - **Sensor recording** (`World.sensorRecording`, off by default): stores
-  each creature's last `SensorInput`, at a cost of `population x 25` floats
+  each creature's last `SensorInput`, at a cost of `population x 30` floats
   per tick when enabled. What makes a decision explainable as perception to
   action.
 - **Statistics**: `SimulationEngine` computes population composition
@@ -694,7 +728,7 @@ Built to be watched, by both the app UI and automated tooling:
 - **`Tools/Headless/run.sh`**: compiles and runs the UI-free simulation
   core directly with `swiftc`, uncapped, several thousand ticks/second. Exposes
   all of the above plus an ASCII world map, trait histograms, NDJSON
-  snapshots, and a per-creature behaviour trace (all 25 inputs and 6 outputs,
+  snapshots, and a per-creature behaviour trace (all 30 inputs and 6 outputs,
   every tick). See the README's
   [Watching it headlessly](../README.md#watching-it-headlessly) section for
   usage.

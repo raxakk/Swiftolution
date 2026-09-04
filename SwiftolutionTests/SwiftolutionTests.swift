@@ -199,9 +199,17 @@ struct SwiftolutionTests {
                 terrainBearingForest:    Float.random(in: -1...1),
                 terrainBearingDesert:    Float.random(in: -1...1),
                 terrainBearingWetland:   Float.random(in: -1...1),
-                terrainBearingWater:     Float.random(in: -1...1)
+                terrainBearingWater:     Float.random(in: -1...1),
+                memory0:    Float.random(in: -1...1),
+                memory1:    Float.random(in: -1...1),
+                memory2:    Float.random(in: -1...1),
+                memory3:    Float.random(in: -1...1),
+                oscillator: Float.random(in: -1...1)
             )
-            let out = nn.activate(inputs: input)
+            var memory = SIMD4<Float>()
+            let out = nn.activate(inputs: input, memory: &memory)
+            // The context handed to the next tick is a tanh activation, hence bounded.
+            for c in 0..<NeuralNetwork.contextCount { #expect((-1...1).contains(memory[c])) }
             #expect((0...1).contains(out.turnAngle))
             #expect((0...1).contains(out.speed))
             #expect((0...1).contains(out.wantsToReproduce))
@@ -220,6 +228,66 @@ struct SwiftolutionTests {
     }
 
     // MARK: - Creature
+
+    @Test func oscillatorCompletesOneCycleOverItsGeneticPeriod() {
+        var dna = DNA.random()
+        dna.genes[14] = 0.0                      // period = 10 ticks, the fastest clock
+        let creature = Creature(dna: dna, position: .zero)
+        #expect(abs(creature.dna.oscillatorPeriod - 10) < 0.001)
+
+        // Sampled over one full period the clock has to swing through both signs and come
+        // back: without that, "internal clock" would be an input that never moves.
+        var minimum = Float.greatestFiniteMagnitude
+        var maximum = -Float.greatestFiniteMagnitude
+        for age in 0...10 {
+            creature.age = age
+            let v = creature.oscillator
+            #expect((-1...1).contains(v))
+            minimum = min(minimum, v)
+            maximum = max(maximum, v)
+        }
+        #expect(minimum < -0.9)
+        #expect(maximum > 0.9)
+        creature.age = 0
+        #expect(abs(creature.oscillator) < 0.001)   // starts at zero, so birth is not a kick
+    }
+
+    @Test func oscillatorPeriodSpansTheGeneRange() {
+        var dna = DNA.random()
+        dna.genes[14] = 0.0
+        #expect(abs(dna.oscillatorPeriod - 10) < 0.001)
+        dna.genes[14] = 1.0
+        #expect(abs(dna.oscillatorPeriod - 200) < 0.001)
+    }
+
+    @Test func brainMemoryStartsEmptyAndIsCarriedAcrossTicks() {
+        let world = World(size: CGSize(width: 600, height: 600))
+        world.populate(creatures: 20, food: 200)
+        // Nothing is inherited: every creature is born with a blank slate.
+        for c in world.creatures {
+            #expect(c.brainMemory == SIMD4<Float>())
+        }
+
+        world.tick()
+        // After one tick the context holds hidden activations, and it stays bounded: the
+        // values are tanh outputs, so the feedback loop cannot run away.
+        var anyNonZero = false
+        for c in world.creatures {
+            for i in 0..<NeuralNetwork.contextCount {
+                #expect((-1...1).contains(c.brainMemory[i]))
+                if c.brainMemory[i] != 0 { anyNonZero = true }
+            }
+        }
+        #expect(anyNonZero)
+
+        for _ in 0..<200 { world.tick() }
+        for c in world.creatures {
+            for i in 0..<NeuralNetwork.contextCount {
+                #expect(c.brainMemory[i].isFinite)
+                #expect((-1...1).contains(c.brainMemory[i]))
+            }
+        }
+    }
 
     @Test func senescenceZeroWhenYoung() {
         var dna = DNA.random()

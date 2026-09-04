@@ -45,7 +45,7 @@ final class World {
     var events: [SimEvent] = []
 
     // Stores every creature's perception each tick (Creature.lastSensors), for tracing and
-    // diagnostics only. Off by default, since it otherwise costs population x 25 floats a tick.
+    // diagnostics only. Off by default, since it otherwise costs population x 30 floats a tick.
     var sensorRecording = false
     var foodGrowthRate:   Double = 0.03   // logistic rate: the share of free capacity filled per tick
     var maxFood:          Int    = 250    // carrying capacity (configurable)
@@ -169,7 +169,11 @@ final class World {
                 let input = sense(for: snapshot[i])
                 // Each iteration writes only its own creature, so there is no data race.
                 if sensorRecording { snapshot[i].lastSensors = input }
-                buf[i] = snapshot[i].brain.activate(inputs: input)
+                // The context goes in and comes back out again: each iteration touches only
+                // its own creature's memory, so the parallel phase stays race free.
+                var memory = snapshot[i].brainMemory
+                buf[i] = snapshot[i].brain.activate(inputs: input, memory: &memory)
+                snapshot[i].brainMemory = memory
             }
         }
 
@@ -352,7 +356,12 @@ final class World {
             terrainBearingForest:    tbForest,
             terrainBearingDesert:    tbDesert,
             terrainBearingWetland:   tbWetland,
-            terrainBearingWater:     tbWater
+            terrainBearingWater:     tbWater,
+            memory0:    creature.brainMemory[0],
+            memory1:    creature.brainMemory[1],
+            memory2:    creature.brainMemory[2],
+            memory3:    creature.brainMemory[3],
+            oscillator: creature.oscillator
         )
     }
 

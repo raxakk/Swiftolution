@@ -25,8 +25,12 @@ struct DNA {
     var turnRate:              Float { genes[12] }
     // Olfaction: gene=0 -> 30 px (barely), gene=1 -> 200 px (wide omnidirectional perception)
     var olfaction:             Float { genes[13] }
+    // Period of the internal clock in ticks: gene=0 -> 10 (frantic), gene=1 -> 200 (slow sweep).
+    // It gives the oscillator input its frequency, so how fast a creature paces or zigzags is
+    // itself under selection: a hunter needs a different search rhythm than a grazer.
+    var oscillatorPeriod:      Float { genes[14] * 190 + 10 }
 
-    static let neuralWeightsStartIndex = 14
+    static let neuralWeightsStartIndex = 15
 
     static func totalLength(networkWeightCount: Int) -> Int {
         neuralWeightsStartIndex + networkWeightCount
