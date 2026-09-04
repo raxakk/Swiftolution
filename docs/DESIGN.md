@@ -9,7 +9,7 @@ collapse in specific ways and fixing the cause.
 
 An evolutionary simulation only produces interesting behaviour if the fitness
 landscape is climbable. Wherever two viable strategies are separated by a region
-of low fitness, evolution cannot cross it — only a lucky large mutation can, and
+of low fitness, evolution cannot cross it. Only a lucky large mutation can, and
 those are rare enough that in practice the population stays on one side forever.
 
 Most of the tuning in this project is about removing such valleys.
@@ -41,7 +41,7 @@ Two further adjustments serve the same goal:
 
 ### Plant toxin
 
-Making carnivory reachable is not enough — carnivores also have to be pushed to
+Making carnivory reachable is not enough. Carnivores also have to be pushed to
 *specialize*, or the population settles into undifferentiated omnivores.
 
 Plants defend themselves chemically. Above an aggression threshold (default 0.5)
@@ -81,8 +81,8 @@ Assortative mating produces reproductive isolation: creatures only mate with
 partners whose genetic distance is below a threshold.
 
 The distance is deliberately **not** computed over the whole genome. With ~200
-network weights every pair of creatures sits at roughly the same distance — the
-curse of dimensionality — and the measure carries no signal. Instead it uses a
+network weights every pair of creatures sits at roughly the same distance (the
+curse of dimensionality), and the measure carries no signal. Instead it uses a
 four-axis species signature: colour (r, g, b) plus aggression. Colour dominates
 because it is both perceived by other creatures as a sensor input and visible on
 screen, so clusters are something a human observer can actually watch form.
@@ -92,7 +92,7 @@ Gene flow is also bounded spatially. `World.mateRadius` (40 px) is the distance
 within which partners can find each other; a smaller radius lets species separate
 on a finer spatial scale.
 
-Water barriers add the allopatric route to the same outcome — see below.
+Water barriers add the allopatric route to the same outcome; see below.
 
 ## Biomes and terrain
 
@@ -114,7 +114,7 @@ information at all took two fixes, both instructive.
 
 **Sampling the tile grid does not work.** The original implementation sampled
 biome *tile centres* within the sight radius. Tiles are 200 px apart, but real
-sight radii are 20-160 px, so the nearest tile centre was almost never in range —
+sight radii are 20-160 px, so the nearest tile centre was almost never in range,
 not even the creature's own. All five bearings were constantly 0. The sensor
 inputs existed, carried nothing, and water avoidance could never be learned.
 The fix samples the creature's own sight cone on a polar grid (3 distance rings
@@ -138,7 +138,7 @@ signal (>= 0.05) from ~0% to 51%.
 The intended workflow is to start a run with food capacity at maximum, let a
 stable population establish itself, and only then reduce the capacity to raise
 selection pressure. A run started under scarcity mostly dies before evolution has
-anything to work with — early starvation in that situation is the setup, not a
+anything to work with. Early starvation in that situation is the setup, not a
 bug. Both the app and the headless runner therefore default to the maximum, and
 `--reduce-food-at T C` performs the reduction, repeatably for stepwise steps.
 
@@ -153,7 +153,7 @@ Capacity is a reference value for an 800x600 world, scaled by `sqrt(area)` so
 that doubling the area gives ~1.4x the capacity rather than 2x. This has a
 consequence worth knowing: the largest world (4800x3600) has 36 times the
 reference area but only a factor of 6 in capacity, so its plant *density* is a
-sixth of the default. The UI slider therefore goes to 3000 — at that setting the
+sixth of the default. The UI slider therefore goes to 3000: at that setting the
 largest world reaches the same density the default world has at 1500, which is
 what makes the bootstrap phase work there too.
 
@@ -187,7 +187,7 @@ observation practical. The load-bearing decisions:
   visitor API so queries allocate nothing. `removeAll(keepingCapacity:)` makes
   `rebuild()` allocation-free once warmed up.
 - **Query only what you asked for.** Cell scans cover the bounding box of the
-  query circle, not a block of `+/-ceil(radius / cellSize)` cells — the latter
+  query circle, not a block of `+/-ceil(radius / cellSize)` cells. The latter
   scanned 3x3 cells for a 12 px eat radius, i.e. 57,600 px2 instead of 452.
 - **Summed-area table for plant density.** The olfaction sensor needs a count of
   plants within up to 200 px. Counting them by scanning forced the food pass out

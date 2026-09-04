@@ -46,6 +46,6 @@ jobs:
 
       # Guards the architecture invariant: Simulation/ has to stay compilable on its
       # own with swiftc. Import SwiftUI or SpriteKit in there and the app still
-      # builds — only this step notices.
+      # builds; only this step notices.
       - name: Headless runner
         run: ./Tools/Headless/run.sh --ticks 2000 --interval 2000

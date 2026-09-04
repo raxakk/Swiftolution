@@ -77,7 +77,7 @@ final class GameScene: SKScene {
         setup(world: world)
     }
 
-    // MARK: - Update (called by SimulationEngine — read only, never mutate!)
+    // MARK: - Update (called by SimulationEngine; read only, never mutate!)
 
     func update(world: World) {
         syncCreatureNodes(world.creatures)
@@ -136,7 +136,7 @@ final class GameScene: SKScene {
             foodNodes.removeValue(forKey: id)?.removeFromParent()
         }
 
-        // Add the new ones — all plants share one texture, hence a single GPU draw call
+        // Add the new ones: all plants share one texture, hence a single GPU draw call
         for food in foods where foodNodes[food.id] == nil {
             let node: SKSpriteNode
             switch food.type {

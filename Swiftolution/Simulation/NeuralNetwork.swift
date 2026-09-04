@@ -42,7 +42,7 @@ struct NeuralNetwork {
         }
 
         // Genes live in [0,1]. Remap them to [-1,1] for network weights so that positive and
-        // negative influences are equally likely — otherwise every neuron would be biased to
+        // negative influences are equally likely; otherwise every neuron would be biased to
         // fire in the same direction.
         func w(_ v: Float) -> Float { v * 2 - 1 }
 
@@ -145,7 +145,7 @@ struct SensorInput {
     var terrainBearingWetland:     Float
     var terrainBearingWater:       Float
 
-    // Writes the inputs into a (stack) buffer — the order defines the network's input layout.
+    // Writes the inputs into a (stack) buffer; the order defines the network's input layout.
     func write(to buf: UnsafeMutableBufferPointer<Float>) {
         buf[0]  = angleToFood
         buf[1]  = distanceToFood

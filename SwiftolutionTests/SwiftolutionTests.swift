@@ -269,7 +269,7 @@ struct SwiftolutionTests {
 
     @Test func eatPlantHerbivoreDigestibility() {
         var dna = DNA.random()
-        dna.genes[3] = 0.0  // pure herbivore — digestibility = (1-0*0.7)*0.6 = 0.6
+        dna.genes[3] = 0.0  // pure herbivore: digestibility = (1-0*0.7)*0.6 = 0.6
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         let food = FoodSource(position: .zero, energyValue: 100, type: .plant)
@@ -279,7 +279,7 @@ struct SwiftolutionTests {
 
     @Test func eatPlantCarnivoreDigestibility() {
         var dna = DNA.random()
-        dna.genes[3] = 1.0  // pure carnivore — digestibility = (1-1*0.7)*0.6 = 0.18
+        dna.genes[3] = 1.0  // pure carnivore: digestibility = (1-1*0.7)*0.6 = 0.18
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         let food = FoodSource(position: .zero, energyValue: 100, type: .plant)
@@ -289,7 +289,7 @@ struct SwiftolutionTests {
 
     @Test func eatCorpseDigestibility() {
         var dna = DNA.random()
-        dna.genes[3] = 1.0  // carnivore — digestibility = 0.80
+        dna.genes[3] = 1.0  // carnivore: digestibility = 0.80
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
         let food = FoodSource(position: .zero, energyValue: 100, type: .corpse)
@@ -352,7 +352,7 @@ struct SwiftolutionTests {
     }
 
     @Test func omnivoreEatsBothFoodTypes() {
-        // aggression=0.5 -> plant: (1-0.35)*0.6=0.39; corpse: 0.2+0.5*0.60=0.50 — both are usable
+        // aggression=0.5 -> plant: (1-0.35)*0.6=0.39; corpse: 0.2+0.5*0.60=0.50, both are usable
         var dna = DNA.random()
         dna.genes[3] = 0.5
         let creature = Creature(dna: dna, position: .zero)
@@ -417,7 +417,7 @@ struct SwiftolutionTests {
     }
 
     @Test func plantToxinLeavesCorpseGainUntouched() {
-        // The toxin load applies to plants only — the carrion stepping stone is fully intact for carnivores.
+        // The toxin load applies to plants only; the carrion stepping stone is fully intact for carnivores.
         var dna = DNA.random(); dna.genes[3] = 1.0
         let creature = Creature(dna: dna, position: .zero)
         creature.energy = 0
@@ -446,7 +446,7 @@ struct SwiftolutionTests {
     @Test func reproductionChildEnergyFromParentInvestment() {
         let world = World(size: CGSize(width: 500, height: 500))
         world.maxPopulation = 100
-        world.mutationRate  = 0.0  // no mutation — child DNA identical to parents
+        world.mutationRate  = 0.0  // no mutation: child DNA identical to parents
 
         var dna = DNA.random()
         dna.genes[3]  = 0.2  // herbivore
@@ -684,7 +684,7 @@ struct SwiftolutionTests {
 
     @Test func biomeWorldNeverPlacesLifeOnWater() {
         // Integration: the full tick loop with biomes on. A core invariant across the whole
-        // simulation — neither living creatures nor plants may ever end up in water (spawns
+        // simulation: neither living creatures nor plants may ever end up in water (spawns
         // avoid it, movement is blocked, and growth rejects it).
         let world = World(size: CGSize(width: 1600, height: 1200))
         world.biomesEnabled = true
@@ -732,8 +732,8 @@ struct SwiftolutionTests {
 
     @Test func terrainPerceptionWorksAtRealisticSightRadii() {
         // Regression: real sight radii are ~20-160 px while the tile raster is 200 px. At that
-        // scale the old tile-centre sampling never found a tile at all — not even the creature's
-        // own — and returned a constant 0, leaving the sense effectively dead.
+        // scale the old tile-centre sampling never found a tile at all, not even the creature's
+        // own, and returned a constant 0, leaving the sense effectively dead.
         // Map: water on the left (x < 200), grassland on the right. The observer stands close to
         // the border with 60 px of sight.
         let map = BiomeMap(tiles: [.water, .grassland], cols: 2, rows: 1, tileSize: 200)

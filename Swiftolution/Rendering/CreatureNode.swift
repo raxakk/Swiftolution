@@ -44,13 +44,13 @@ final class CreatureNode: SKNode {
                                                  lineWidth: lineWidth,
                                                  radius: radius)
 
-        // The heading line as a plain rectangle — no path rasterizer needed
+        // The heading line as a plain rectangle; no path rasterizer needed
         let lineAlpha = max(0, 0.7 - aggr * 1.4)
         directionLine = SKSpriteNode(color: NSColor.white.withAlphaComponent(lineAlpha),
                                      size: CGSize(width: radius + 5, height: 1.5))
         directionLine.anchorPoint = CGPoint(x: 0, y: 0.5)
 
-        // The sight cone — only visible while selected; its path is refreshed in sync()
+        // The sight cone, only visible while selected; its path is refreshed in sync()
         sightNode             = SKShapeNode(path: CreatureNode.fovPath(radius: creature.sightRadius,
                                                                         angle: creature.sightAngle))
         sightNode.fillColor   = bodyColor.withAlphaComponent(0.07)

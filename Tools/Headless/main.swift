@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 // Headless runner for the Swiftolution simulation.
-// Compiles only the UI-free core (World and friends) — see run.sh.
+// Compiles only the UI-free core (World and friends); see run.sh.
 // Runs uncapped (no 60 fps limit) and prints statistics at intervals.
 //
 // The point is to let other systems, LLM agents included, watch a running simulation the way a
@@ -45,7 +45,7 @@ struct Options {
 
 func printUsage() {
     print("""
-    swiftolution-headless — the simulation without a UI
+    swiftolution-headless: the simulation without a UI
 
     Usage: run.sh [options]
 
@@ -157,7 +157,7 @@ struct EventJSON: Codable {
 }
 
 struct SnapshotJSON: Codable {
-    let type: String                          // "snapshot" — tells these apart from event lines in the stream
+    let type: String                          // "snapshot": tells these apart from event lines in the stream
     let tick, generation, population: Int
     let herbivores, omnivores, carnivores, species: Int
     let plants, maxFood, corpses, oldest: Int
@@ -243,7 +243,7 @@ func buildSnapshot(_ world: World, _ o: Options,
         mapLines = lines
     }
 
-    // Sample individuals: the oldest, the most energetic, then random ones — deduplicated.
+    // Sample individuals: the oldest, the most energetic, then random ones, deduplicated.
     var samples: [SampleJSON]? = nil
     if wantExtras && o.samples > 0 && !world.creatures.isEmpty {
         var picked: [Creature] = []
@@ -325,7 +325,7 @@ func renderHistogram(_ name: String, _ bins: [Int], width: Int = 32) -> String {
         let lo = Double(i) / Double(bins.count)
         let hi = Double(i + 1) / Double(bins.count)
         let len = Int((Double(bins[i]) / Double(maxv)) * Double(width))
-        out += "    \(fmt(lo,3,1))–\(fmt(hi,3,1)) |" + String(repeating: "#", count: len) + " \(bins[i])\n"
+        out += "    \(fmt(lo,3,1))-\(fmt(hi,3,1)) |" + String(repeating: "#", count: len) + " \(bins[i])\n"
     }
     return out
 }
@@ -371,11 +371,11 @@ func printTraceLegend() {
     print("""
     ── TRACE ─────────────────────────────────────────────────────────────────────
       line 1: t=tick #id (x,y) h=heading E=energy fraction a=age [biome]
-        F(a d T n) nearest food — a angle (-left/+right), d distance, T P=plant/C=corpse, n count in sight
-        C(a d v n) nearest creature — v approach (+closing in/-fleeing)
+        F(a d T n) nearest food: a angle (-left/+right), d distance, T P=plant/C=corpse, n count in sight
+        C(a d v n) nearest creature: v approach (+closing in/-fleeing)
         dn density | hd herding direction | sm plant smell | fd feeding rate | sn senescence
         fert/cov/dif biome underfoot | bear terrain bearing (. grassland  f forest  d desert  w wetland  ~ water)
-      line 2: => network decision — turn (-left/+right) spd rep atk eatP eatC
+      line 2: => network decision: turn (-left/+right) spd rep atk eatP eatC
     ──────────────────────────────────────────────────────────────────────────────
     """)
 }
@@ -503,7 +503,7 @@ if o.csv && !ndjson {
 let foodSteps = o.foodSteps.sorted { $0.tick < $1.tick }
 var nextStep = 0
 
-// Trace window: 200 ticks from traceFrom by default — deliberately narrow, since it is meant to be read.
+// Trace window: 200 ticks from traceFrom by default, deliberately narrow, since it is meant to be read.
 let traceTo = o.traceTo >= 0 ? o.traceTo : o.traceFrom + 200
 var traced: [Creature] = []
 var traceStarted = false
@@ -541,7 +541,7 @@ for _ in 0..<o.ticks {
                     printTraceLine(c, world, o)
                     survivors.append(c)
                 } else {
-                    print("t=\(world.tickCount) #\(shortID(c)) died — the trace ends for this individual")
+                    print("t=\(world.tickCount) #\(shortID(c)) died: the trace ends for this individual")
                 }
             }
             traced = survivors

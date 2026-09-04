@@ -49,13 +49,13 @@ struct DNA {
             let roll = Float.random(in: 0...1)
             let delta: Float
             if roll < 0.01 {
-                // 1%: macro mutation — jumps into a new region of strategy space
+                // 1%: macro mutation, jumps into a new region of strategy space
                 delta = Float.random(in: -strength * 5 ... strength * 5)
             } else if roll < 0.05 {
-                // 4%: medium mutation — explores a wider neighbourhood
+                // 4%: medium mutation, explores a wider neighbourhood
                 delta = Float.random(in: -strength * 2 ... strength * 2)
             } else {
-                // 95%: micro mutation — fine tuning
+                // 95%: micro mutation, fine tuning
                 delta = Float.random(in: -strength...strength)
             }
             newGenes[i] = max(0, min(1, newGenes[i] + delta))
@@ -81,7 +81,7 @@ struct DNA {
 
     // A "species signature" for assortative mating: color dominates (it is both visible on
     // screen and perceived as a sensor input), with aggression contributing the ecological
-    // niche. Deliberately NOT the whole genome — across ~200 network weights every pair would
+    // niche. Deliberately NOT the whole genome: across ~200 network weights every pair would
     // sit at roughly the same distance (the curse of dimensionality), and color is the signal
     // one can actually watch cluster on screen.
     // Euclidean distance over 4 markers in [0,1], so the range is [0, 2].

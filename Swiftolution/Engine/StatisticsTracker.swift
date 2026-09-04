@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 struct StatSnapshot: Identifiable {
-    let id: Int   // tick — eindeutig innerhalb einer Simulation
+    let id: Int   // tick: eindeutig innerhalb einer Simulation
     let tick: Int
     let herbivores: Int
     let omnivores:  Int
@@ -13,9 +13,9 @@ struct StatSnapshot: Identifiable {
     let avgSpeed: Double
     let avgSize: Double
     let avgBrainSize: Double
-    let avgMaxAge: Double     // gene value [0,1] — 0 = short-lived, 1 = long-lived
-    let avgLitterSize: Double // gene value [0,1] — 0 = K-strategist, 1 = r-strategist
-    let avgEnergy: Double     // [0,1] — the mean energy level
+    let avgMaxAge: Double     // gene value [0,1]: 0 = short-lived, 1 = long-lived
+    let avgLitterSize: Double // gene value [0,1]: 0 = K-strategist, 1 = r-strategist
+    let avgEnergy: Double     // [0,1]: the mean energy level
 }
 
 final class StatisticsTracker: ObservableObject {

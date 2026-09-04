@@ -5,8 +5,8 @@ import CoreGraphics
 
 // A biome is an ecological zone with a character of its own. Each one modulates
 // four things: how much plant food grows there (fertility x growthFactor), how
-// fast you move (speedFactor), how far you see (sightFactor — cover), and whether
-// you can enter it at all (isPassable — water is a barrier for geographic
+// fast you move (speedFactor), how far you see (sightFactor, i.e. cover), and whether
+// you can enter it at all (isPassable: water is a barrier for geographic
 // isolation). The values deliberately pull against each other so that no biome is
 // good at everything and different niches reward different phenotypes.
 enum Biome: Int, CaseIterable {
@@ -57,7 +57,7 @@ enum Biome: Int, CaseIterable {
         case .forest:    return 0.85
         case .desert:    return 0.80
         case .wetland:   return 0.55
-        case .water:     return 0.30   // only ever read as a sensor value — water is impassable anyway
+        case .water:     return 0.30   // only ever read as a sensor value; water is impassable anyway
         }
     }
 
@@ -75,7 +75,7 @@ enum Biome: Int, CaseIterable {
     // Water blocks movement -> splits populations -> allopatric speciation.
     var isPassable: Bool { self != .water }
 
-    static let maxFertility: Float = 1.30   // wetland — used to normalize sensor values
+    static let maxFertility: Float = 1.30   // wetland; used to normalize sensor values
 
     // Display color (kept dark so that bright creatures stand out against it).
     var color: (r: Double, g: Double, b: Double) {
@@ -140,7 +140,7 @@ struct BiomeMap {
     // MARK: Directional perception
 
     // Direction-resolved terrain perception across the sight cone: one value in [-1, 1]
-    // per biome — the sign is the direction (-1 left ... +1 right, relative to the heading)
+    // per biome: the sign is the direction (-1 left ... +1 right, relative to the heading)
     // and the magnitude is how strongly that biome sits in the field of view. Nearer samples
     // count for more; the sum is normalized over all samples so the values stay bounded.
     // Uniform terrain all around yields ~0 (the contributions cancel), which is correct:
@@ -148,8 +148,8 @@ struct BiomeMap {
     //
     // What gets sampled is the creature's OWN sight cone (a polar grid of distance rings x
     // angles), not the tile grid. Reason: real sight radii are ~20-160 px while tiles are
-    // 200 px, so sampling tile centres almost never found a tile within sight — not even the
-    // creature's own — and returned a constant 0. Resolution now follows the sight radius
+    // 200 px, so sampling tile centres almost never found a tile within sight, not even the
+    // creature's own, and returned a constant 0. Resolution now follows the sight radius
     // rather than the tile size, and works at any radius.
     //
     // The angle offsets cover the cone by construction, so no FOV check is needed; at 360

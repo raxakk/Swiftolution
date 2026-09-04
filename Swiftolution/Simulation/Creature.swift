@@ -41,7 +41,7 @@ final class Creature {
         return max(0, (progress - 0.7) / 0.3)
     }
     var lastAction: ActionOutput?
-    // The last perception — only filled in when World.sensorRecording is on (tracing and
+    // The last perception, only filled in when World.sensorRecording is on (tracing and
     // diagnostics). It is what makes a network decision explainable: perception -> action.
     var lastSensors: SensorInput?
     weak var lastAttacker: Creature?
@@ -63,7 +63,7 @@ final class Creature {
     var olfactionSmellRadius: CGFloat { CGFloat(dna.olfaction * 170 + 30) }
     // Landscape horizon: large terrain features (lakes, forest edges) are recognizable from
     // much farther away than a single item of food. Without this factor, terrain perception
-    // (40-160 px) would sit far below the scale of the biome regions (~600 px) — a creature
+    // (40-160 px) would sit far below the scale of the biome regions (~600 px): a creature
     // would stand in the middle of uniform terrain and never receive a directional signal.
     // It stays tied to the sight gene, so range remains evolvable and costly.
     static let terrainSightFactor: CGFloat = 4
@@ -124,7 +124,7 @@ final class Creature {
         let newY = (position.y + CGFloat(headingSin * speed) + world.size.height)
             .truncatingRemainder(dividingBy: world.size.height)
 
-        // Impassable biomes (water) block movement outright — a genuine barrier. With biomes
+        // Impassable biomes (water) block movement outright, a genuine barrier. With biomes
         // off everything is grassland, hence passable, and behaviour is unchanged.
         if world.biome(at: CGPoint(x: newX, y: newY)).isPassable {
             position.x = newX
@@ -152,7 +152,7 @@ final class Creature {
 
         if food.type == .plant {
             // Plants defend themselves chemically (tannins, alkaloids, fibre). Plant-adapted
-            // animals — aggression below the threshold — detoxify cheaply and pay nothing.
+            // animals (aggression below the threshold) detoxify cheaply and pay nothing.
             // Above it a carnivore takes on a toxin load proportional to how specialized it is
             // times how much it ate, until eating plants costs net energy. Meat stays toxin
             // free, so the carrion stepping stone (see digestibility) is left fully intact for
@@ -187,7 +187,7 @@ final class Creature {
         let sr = dna.sightRadius; let sa = dna.sightAngle
         let sightCost:      Float = sr * sr * 0.024 + sa * sa * 0.030
         let ol = dna.olfaction;  let olfactionCost: Float = ol * ol * 0.020
-        // Dynamic costs stay linear — they depend on actual behaviour, not on the gene alone.
+        // Dynamic costs stay linear: they depend on actual behaviour, not on the gene alone.
         let speedCost:      Float = (lastAction?.speed ?? 0) * maxSpeed * 0.025 * (1 + dna.size * 0.8)
         let actualTurn      = abs((lastAction?.turnAngle ?? 0.5) - 0.5) * 2   // [0,1]
         let turnCost:       Float = actualTurn * maxTurnRate * 0.08

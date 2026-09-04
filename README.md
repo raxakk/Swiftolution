@@ -30,7 +30,7 @@ underfoot, and a directional bearing per biome across the landscape.
 
 **Metabolism.** Energy is conserved. Maintenance costs scale quadratically with
 the traits that drive them, so specialists beat generalists. Body mass is stored
-separately from the metabolic battery — it builds up when well fed, is
+separately from the metabolic battery: it builds up when well fed, is
 catabolized when starving, and determines how nourishing the corpse will be.
 
 **Reproduction.** Sexual when a compatible partner is nearby, asexual otherwise.
@@ -41,7 +41,7 @@ more than the parents spent.
 genetically similar partners, so reproductive isolation and visible species
 clusters can form.
 
-**Terrain.** Five biomes — grassland, forest, desert, wetland, water — laid out as
+**Terrain.** Five biomes (grassland, forest, desert, wetland, water) laid out as
 contiguous Voronoi regions. They modulate fertility, growth, movement speed and
 sight cover, and water is impassable, which turns lakes into barriers that split
 populations geographically.
@@ -49,9 +49,13 @@ populations geographically.
 **Seasons.** A cosine cycle modulating plant growth, with configurable year length
 and amplitude.
 
-The reasoning behind the numbers — why carrion digestibility has a floor, why
-genetic distance uses four genes rather than the whole genome, why terrain has its
-own perception horizon — is in [docs/DESIGN.md](docs/DESIGN.md).
+The exact mechanics, every formula and constant tick by tick, are in
+[docs/MECHANICS.md](docs/MECHANICS.md). The reasoning behind the numbers (why
+carrion digestibility has a floor, why genetic distance uses four genes rather
+than the whole genome, why terrain has its own perception horizon) is in
+[docs/DESIGN.md](docs/DESIGN.md). Where the implementation does not yet match
+that intent, [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) says so, with
+evidence and a suggested fix.
 
 ## Running it
 
@@ -66,7 +70,7 @@ world size, starting population and biomes need a restart.
 
 Food capacity starts at the top of its range on purpose. That is the bootstrap
 phase: the population establishes itself and grows to the ceiling. Once it is
-stable, turn the food down — that is where selection pressure comes from and where
+stable, turn the food down. That is where selection pressure comes from and where
 it gets interesting. Starting scarce instead mostly produces an extinction; the
 reasoning is in the design notes.
 
@@ -75,7 +79,7 @@ The interface is available in English and German.
 ## Watching it headlessly
 
 `Tools/Headless/run.sh` compiles the UI-free core with `swiftc` and runs the
-simulation without a window, uncapped — several thousand ticks per second. No
+simulation without a window, uncapped, at several thousand ticks per second. No
 Xcode project involved. It exists so that a run can be observed and analysed
 programmatically, by a script or by an LLM agent.
 
@@ -89,15 +93,15 @@ programmatically, by a script or by an LLM agent.
 
 Beyond the aggregate table it offers:
 
-- `--detail` — an ASCII world map with terrain and creature density, trait
+- `--detail`: an ASCII world map with terrain and creature density, trait
   histograms, a per-interval breakdown of causes of death, and sample individuals
   at inspector level of detail
-- `--json` — NDJSON snapshots, one object per interval
-- `--events` — a live stream of births and deaths, with cause, per tick
-- `--trace` — a behaviour trace following individual creatures tick by tick, with
+- `--json`: NDJSON snapshots, one object per interval
+- `--events`: a live stream of births and deaths, with cause, per tick
+- `--trace`: a behaviour trace following individual creatures tick by tick, with
   all 25 sensor inputs and 6 outputs, so a decision can be read as
   perception -> action
-- `--reduce-food-at T C` — change the food capacity mid-run, repeatable
+- `--reduce-food-at T C`: change the food capacity mid-run, repeatable
 
 A note on method: start a run at maximum food, let the population stabilize, and
 only then reduce the capacity to raise selection pressure. A run started under
@@ -120,12 +124,14 @@ of death.
 ```
 Swiftolution/Simulation/   the model: World, Creature, DNA, NeuralNetwork,
                            Biome, SpatialGrid, FoodSource
-Swiftolution/Engine/       SimulationEngine and StatisticsTracker — the clock and
+Swiftolution/Engine/       SimulationEngine and StatisticsTracker: the clock and
                            the observable layer the views bind to
 Swiftolution/Rendering/    SpriteKit scene and creature nodes
 Swiftolution/UI/           SwiftUI sidebar, inspector and charts
 Tools/Headless/            the console runner
+docs/MECHANICS.md          how the simulation works, formula by formula
 docs/DESIGN.md             why the simulation is tuned the way it is
+docs/KNOWN-ISSUES.md       reviewed defects, with evidence and a suggested fix
 ```
 
 Every file in `Simulation/` imports nothing but Foundation and CoreGraphics. That is
@@ -136,4 +142,4 @@ over, in `Engine/`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

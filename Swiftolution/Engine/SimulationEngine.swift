@@ -57,7 +57,7 @@ final class SimulationEngine: ObservableObject {
     func selectCreature(id: UUID?) {
         selectedCreatureID       = id
         scene.selectedCreatureID = id
-        // Do not touch world.creatures while simQueue is running — updateStats() catches up later
+        // Do not touch world.creatures while simQueue is running; updateStats() catches up later
         guard !simBusy else { return }
         refreshInspection()
     }
@@ -119,14 +119,14 @@ final class SimulationEngine: ObservableObject {
 
     // Ceiling on the backlog that can be caught up (~2 frames at 10x). Without it, a genuinely
     // overloaded run would grow the backlog without bound, make the batches ever larger and
-    // freeze the UI — better that the multiplier simply stays out of reach.
+    // freeze the UI; better that the multiplier simply stays out of reach.
     private static let maxTickBacklog: Double = 10
 
     private func tick() {
         guard !isPaused else { return }
         // Accumulate the budget even while the simulation is still computing: otherwise the
         // tick budget of every frame with simBusy set is lost, and the simulation idles between
-        // batches instead of working — which made it run persistently slower than the
+        // batches instead of working, which made it run persistently slower than the
         // configured multiplier.
         tickAccumulator += 30.0 * speedMultiplier / 60.0
         tickAccumulator = min(tickAccumulator, SimulationEngine.maxTickBacklog)
@@ -197,7 +197,7 @@ final class SimulationEngine: ObservableObject {
 struct SimulationConfig {
     // Takes effect immediately (live)
     // Reference for 800x600; scales with sqrt(world area). Defaults to the top of the slider's
-    // range on purpose: this is the bootstrap phase of the intended workflow — establish a
+    // range on purpose: this is the bootstrap phase of the intended workflow: establish a
     // population at maximum food, then turn it down to raise selection pressure. Measured
     // headlessly on the default world, a starting population survives 4000 ticks in 6 of 6 runs
     // at 3000 and in 0 of 4 at 1500, so a lower default would mostly show the user an extinction.
@@ -233,7 +233,7 @@ struct SimulationConfig {
     var worldWidth:       Int = 2400
     var worldHeight:      Int = 1800
     var initialCreatures: Int = 80
-    // Starting food is always world.maxFood — the world begins fully planted
+    // Starting food is always world.maxFood; the world begins fully planted
 }
 
 // MARK: - Creature snapshot (for the inspector)
@@ -243,7 +243,7 @@ struct CreatureSnapshot {
     let maxAge:           Int
     let energyRatio:      Float
     let bodyMassRatio:    Float   // bodyMass / maxBodyMass
-    let senescence:       Float   // [0,1] — 0 = young, >0 = age-related decline has set in
+    let senescence:       Float   // [0,1]: 0 = young, >0 = age-related decline has set in
     let isHerbivore:      Bool
     let biomeName:        String?  // the current biome (nil when biomes are disabled)
     // DNA
@@ -256,7 +256,7 @@ struct CreatureSnapshot {
     let sightAngleDeg:    Int     // resulting angle in degrees
     let turnRateGene:     Float   // raw value [0,1]
     let turnRateDeg:      Float   // resulting value in degrees per tick
-    let maxAgeGene:       Float   // [0,1] — shows which pole of the life strategy it sits on
+    let maxAgeGene:       Float   // [0,1]: shows which pole of the life strategy it sits on
     let reproThreshold:   Float
     let litterSize:       Int
     let brainSize:        Float

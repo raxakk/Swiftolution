@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-// Why a creature died — the basis for diagnosing population dynamics.
+// Why a creature died: the basis for diagnosing population dynamics.
 enum DeathCause: String {
     case starvation   // energy <= 0 with no attacker (metabolism, hunger, poisoning)
     case predation    // energy <= 0 after being attacked this tick
@@ -30,11 +30,11 @@ final class World {
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
-    var plantCount:  Int = 0  // cache — avoids a filter { .plant } every tick
-    var corpseCount: Int = 0  // cache — avoids a filter { .corpse } in updateStats
+    var plantCount:  Int = 0  // cache: avoids a filter { .plant } every tick
+    var corpseCount: Int = 0  // cache: avoids a filter { .corpse } in updateStats
     var totalDeaths: Int = 0
 
-    // Causes of death (cumulative) — which factor is pressing on the population, and how hard.
+    // Causes of death (cumulative): which factor is pressing on the population, and how hard.
     var deathsByStarvation = 0
     var deathsByPredation  = 0
     var deathsByOldAge     = 0
@@ -60,7 +60,7 @@ final class World {
     // reproductive isolation, so species become visible instead of the gene pool blurring into
     // one. It coexists with a self-sustaining population (behavioural check: capacity holds
     // even under stepwise food reduction). A lower threshold gives more, tighter species but a
-    // smaller pool of partners — lower it carefully in a population that is already thin.
+    // smaller pool of partners; lower it carefully in a population that is already thin.
     var speciationEnabled:   Bool  = true
     var speciationThreshold: Float = 0.45   // max genetic distance for mating (distance ranges over [0, 2])
 
@@ -87,7 +87,7 @@ final class World {
         biomesEnabled ? biomeMap.biome(at: point) : .grassland
     }
 
-    // Seasons — a cosine cycle modulates plant growth
+    // Seasons: a cosine cycle modulates plant growth
     var seasonEnabled:   Bool  = false
     var seasonLength:    Int   = 3000    // ticks per year
     var seasonAmplitude: Float = 0.7    // 0 = no effect, 1 = winter halts growth entirely
@@ -127,7 +127,7 @@ final class World {
     func populate(creatures creatureCount: Int, food foodCount: Int) {
         for _ in 0..<creatureCount {
             var dna = DNA.random()
-            // The big bang: everything starts herbivorous — carnivores have to evolve
+            // The big bang: everything starts herbivorous, so carnivores have to evolve
             dna.genes[3] = Float.random(in: 0...0.4)
             creatures.append(Creature(dna: dna, position: creatureSpawnPosition()))
         }
@@ -160,7 +160,7 @@ final class World {
         let count = snapshot.count
         guard count > 0 else { return }
 
-        // Phase 1 — parallel: perception and network activation. Each creature reads only its
+        // Phase 1, parallel: perception and network activation. Each creature reads only its
         // own state and the immutable grid, so there is no data race.
         // withUnsafeMutableBufferPointer pins the array buffer, giving COW-free writes from n threads.
         var outputs = [ActionOutput](repeating: ActionOutput(fromArray: [0.5, 0, 0, 0, 1, 1]), count: count)
@@ -173,7 +173,7 @@ final class World {
             }
         }
 
-        // Phase 2 — sequential: write position and state (position changes affect the same tick).
+        // Phase 2, sequential: write position and state (position changes affect the same tick).
         for (i, creature) in snapshot.enumerated() {
             creature.apply(output: outputs[i], in: self)
             creature.tick()
@@ -197,7 +197,7 @@ final class World {
         let isFull   = creature.sightAngle >= 2 * .pi * 0.995
 
         // FOV via a dot product instead of atan2: angle(d, heading) <= halfAngle
-        //   <=> dot / |d| >= cos(halfAngle) — resolvable without sqrt using signs and squares.
+        //   <=> dot / |d| >= cos(halfAngle), resolvable without sqrt using signs and squares.
         let cosHalf   = cos(Float(creature.sightAngle) / 2)
         let cosHalfSq = cosHalf * cosHalf
         let hx = creature.headingCos
@@ -215,7 +215,7 @@ final class World {
         }
 
         // Smell: omnidirectional plant density from an O(1) raster query. As a counting scan it
-        // forced the food pass out to max(sight, smell) — and the smell radius is usually the
+        // forced the food pass out to max(sight, smell), and the smell radius is usually the
         // larger of the two (median 115 px against 94 px) despite yielding this single number.
         let plantsSmelled = grid.plantsNear(creature.position,
                                             within: creature.olfactionSmellRadius)
@@ -359,11 +359,11 @@ final class World {
     // MARK: - Attacking
 
     func attackCreatures() {
-        // ObjectIdentifier: an 8-byte pointer hash instead of a 16-byte UUID hash — twice as fast.
+        // ObjectIdentifier: an 8-byte pointer hash instead of a 16-byte UUID hash, twice as fast.
         var energyDeltas = [ObjectIdentifier: Float](minimumCapacity: creatures.count)
 
         for attacker in creatures {
-            // No hard aggression threshold — damage and cost already scale with aggression.
+            // No hard aggression threshold: damage and cost already scale with aggression.
             guard let action = attacker.lastAction,
                   action.wantsToAttack > 0.5 else { continue }
 
@@ -427,7 +427,7 @@ final class World {
 
     func checkDeaths() {
         // Gompertz-like mortality: a small baseline risk plus an exponentially rising age risk.
-        // A single pass — no UUID set, no second traversal.
+        // A single pass: no UUID set, no second traversal.
         var survivors: [Creature] = []
         survivors.reserveCapacity(creatures.count)
         for creature in creatures {
@@ -438,8 +438,8 @@ final class World {
                 survivors.append(creature)
             } else {
                 totalDeaths += 1
-                // The cause is an energy death — starvation or predation, depending on whether
-                // something attacked this tick — otherwise age mortality (still alive, but the
+                // The cause is an energy death (starvation or predation, depending on whether
+                // something attacked this tick), otherwise age mortality (still alive, but the
                 // Gompertz roll came up).
                 let cause: DeathCause
                 if !creature.isAlive {
@@ -514,7 +514,7 @@ final class World {
             // spatially. The mating barrier is genetic distance when speciation is on, and the
             // aggression niche otherwise.
             // The distance is checked explicitly: without that check the scanned cell block set
-            // the range, which let the cell size — a performance knob — decide the mating range,
+            // the range, which let the cell size (a performance knob) decide the mating range,
             // in practice a ~90 px median instead of the stated 40.
             var partner: Creature? = nil
             let mateRSq = Float(World.mateRadius * World.mateRadius)
@@ -559,7 +559,7 @@ final class World {
                 parent.energy  -= parent.maxEnergy  * costPerParent
                 partner.energy -= partner.maxEnergy * costPerParent
             } else {
-                // Asexual as a fallback — the parent invests 40%, split across the litter
+                // Asexual as a fallback: the parent invests 40%, split across the litter
                 mated.insert(ObjectIdentifier(parent))
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
                 let cost: Float = 0.40
@@ -607,7 +607,7 @@ final class World {
 
     // Biome-weighted growth: the global logistic amount is placed by rejection sampling, with
     // acceptance proportional to the biome's fertility x growthFactor. Water (0) never gets
-    // plants, desert rarely, wetland and grassland often — so fertile and barren zones form.
+    // plants, desert rarely, wetland and grassland often, so fertile and barren zones form.
     private func growFoodWithBiomes() {
         let fillRatio = Double(plantCount) / Double(maxFood)
         let newItems  = Int((foodGrowthRate * currentSeasonFactor * (1.0 - fillRatio) * Double(maxFood)).rounded())
@@ -724,7 +724,7 @@ final class World {
         return creatureSpawnPosition()
     }
 
-    // A passable starting position for creatures — avoids water when biomes are enabled.
+    // A passable starting position for creatures: avoids water when biomes are enabled.
     private func creatureSpawnPosition() -> CGPoint {
         guard biomesEnabled else { return randomPosition() }
         for _ in 0..<40 {

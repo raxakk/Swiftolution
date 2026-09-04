@@ -66,9 +66,9 @@ final class SpatialGrid {
         }
     }
 
-    // MARK: - Queries (allocation-free — candidates are handed to a closure)
+    // MARK: - Queries (allocation-free: candidates are handed to a closure)
 
-    // Yields every candidate in the cells around point. No distance filter — the caller does
+    // Yields every candidate in the cells around point. No distance filter; the caller does
     // that itself, typically on squared distances.
     func forEachCreature(near point: CGPoint, within radius: CGFloat, _ body: (Creature) -> Void) {
         forEachCell(near: point, radius: radius) { cell in
@@ -82,7 +82,7 @@ final class SpatialGrid {
         }
     }
 
-    // Plants within a radius — O(1) via the summed-area table. It is an approximation: the
+    // Plants within a radius, O(1) via the summed-area table. It is an approximation: the
     // enclosing box (32 px raster) is counted rather than the circle, then scaled by pi/4 to
     // the expected circle area. That is ample for a density value which gets clamped to [0,1]
     // anyway, whereas an exact counting scan forced the food pass out to the smell radius.
@@ -102,7 +102,7 @@ final class SpatialGrid {
 
     // MARK: - Internals
 
-    // The cells of the query circle's bounding box — every cell that can hold a point within
+    // The cells of the query circle's bounding box: every cell that can hold a point within
     // radius. All callers check the true distance themselves, so the scan may be as tight as
     // possible: a block in cell steps (+/-ceil(radius / cellSize)) scanned 3x3 cells for an
     // eatRadius of ~12 px, i.e. 57,600 px2 of candidates instead of 452 px2.
