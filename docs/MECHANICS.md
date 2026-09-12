@@ -87,8 +87,9 @@ each in `[0, 1]`: 15 named genes followed by 598 raw neural network weights.
 DNA always carries weights sized for the **maximum** brain (16 hidden
 neurons), regardless of the creature's actual `brainSize`. That keeps every
 genome the same length, so crossover never needs special-casing for
-differently sized brains. A smaller brain simply uses a prefix of the weight
-block and ignores the rest.
+differently sized brains. A smaller brain reads a fixed subset of the weight
+block and leaves the rest unexpressed; which slots those are does not depend
+on the brain size (see [Brain](#brain)).
 
 Genes that map onto a small integer do so by truncation, `Int(gene * N)`,
 which makes the **top bucket reachable only at exactly `gene == 1.0`**: a
@@ -159,6 +160,31 @@ Hidden layer size is itself a gene (`brainSize`), interpolated between
 decoded from genes `[0,1]` to `[-1,1]` via `v * 2 - 1`, so positive and
 negative influence are equally likely from the start. Otherwise every neuron
 would be biased to fire the same way at birth.
+
+**Weight layout.** The genome always carries weights for `maxHiddenCount`,
+whatever the brain actually is, and every weight sits in a fixed block whose
+position does not depend on `hiddenCount`:
+
+```
+layer 1: 16 blocks of 31   genes   0..495   (30 weights, then a bias)
+layer 2:  6 blocks of 17   genes 496..597   (16 weights, then a bias)
+```
+
+A brain with `hc` neurons reads the first `hc` blocks of layer 1 and the
+first `hc` weights of every layer-2 block. The remaining 444 of 598 weight
+genes in a minimal (4-neuron) brain are unexpressed and drift neutrally, so
+a lineage that later grows a neuron finds pre-drifted structure waiting for
+it rather than a fresh random one.
+
+Fixed blocks are what makes `brainSize` evolvable at all. Reading the two
+layers as one consecutive run instead puts the start of layer 2 at
+`hc * (inputCount + 1)`, so a mutation from 4 to 5 neurons shifts the entire
+output layer by 31 genes: the child inherits its parent's motor mapping
+scrambled, and crossover between parents of different brain sizes is a frame
+shift rather than a mix. A test pins this down
+(`growingTheBrainPreservesTheInheritedWiring`): neutralize the extra
+neuron's outgoing weights and a grown brain must behave exactly like the one
+it grew from.
 
 The forward pass runs on a stack buffer (`withUnsafeTemporaryAllocation`),
 no heap allocation, since it is the hottest path in the simulation

@@ -227,6 +227,36 @@ struct SwiftolutionTests {
         #expect(tooLarge.hiddenCount == NeuralNetwork.maxHiddenCount)
     }
 
+    // A brain that grows by one neuron must keep the wiring it inherited. Weights live in
+    // fixed blocks, so the position of a gene does not depend on the brain size: growing is an
+    // addition, not a reinterpretation of the output layer. Here the extra neuron's outgoing
+    // weights are neutralized (gene 0.5 decodes to weight 0), so the grown brain has to behave
+    // exactly like the small one. Read as one consecutive run instead, layer 2 would start 31
+    // genes later and the two would disagree on everything.
+    @Test func growingTheBrainPreservesTheInheritedWiring() {
+        let small = NeuralNetwork.minHiddenCount
+        var weights = DNA.random().neuralWeights()
+        for o in 0..<NeuralNetwork.outputCount {
+            weights[NeuralNetwork.layer2StartIndex + o * NeuralNetwork.layer2BlockSize + small] = 0.5
+        }
+        let parent = NeuralNetwork(weights: weights, hiddenCount: small)
+        let child  = NeuralNetwork(weights: weights, hiddenCount: small + 1)
+        #expect(child.hiddenCount == small + 1)
+
+        let input = uniformSensorInput(0.3)
+        var parentMemory = SIMD4<Float>(), childMemory = SIMD4<Float>()
+        let a = parent.activate(inputs: input, memory: &parentMemory)
+        let b = child.activate(inputs: input, memory: &childMemory)
+
+        #expect(parentMemory == childMemory)
+        #expect(abs(a.turnAngle        - b.turnAngle)        < 1e-6)
+        #expect(abs(a.speed            - b.speed)            < 1e-6)
+        #expect(abs(a.wantsToReproduce - b.wantsToReproduce) < 1e-6)
+        #expect(abs(a.wantsToAttack    - b.wantsToAttack)    < 1e-6)
+        #expect(abs(a.wantsToEatPlant  - b.wantsToEatPlant)  < 1e-6)
+        #expect(abs(a.wantsToEatCorpse - b.wantsToEatCorpse) < 1e-6)
+    }
+
     // MARK: - Creature
 
     @Test func oscillatorCompletesOneCycleOverItsGeneticPeriod() {
@@ -941,4 +971,20 @@ struct SwiftolutionTests {
         #expect(world.events.isEmpty)
         #expect(world.deathsByStarvation == 1)   // the counting still happens
     }
+}
+
+// Every sensor set to the same value: enough to compare two networks on identical input
+// without spelling out thirty fields per call site.
+private func uniformSensorInput(_ v: Float) -> SensorInput {
+    SensorInput(
+        angleToFood: v, distanceToFood: v, angleToCreature: v, distanceToCreature: v,
+        ownEnergy: v, localDensity: v, approachVelocity: v, nearestFoodType: v,
+        avgNearbyHeading: v, nearestCreatureRed: v, nearestCreatureGreen: v,
+        nearestCreatureBlue: v, visibleCreatureCount: v, ownSenescence: v,
+        visibleFoodCount: v, localPlantDensity: v, recentFeedingRate: v,
+        localFertility: v, localCover: v, localDifficulty: v,
+        terrainBearingGrassland: v, terrainBearingForest: v, terrainBearingDesert: v,
+        terrainBearingWetland: v, terrainBearingWater: v,
+        memory0: v, memory1: v, memory2: v, memory3: v, oscillator: v
+    )
 }

@@ -15,12 +15,25 @@ struct NeuralNetwork {
     static let maxHiddenCount = 16
     static let outputCount   = 6   // turnAngle, speed, wantsToReproduce, wantsToAttack, wantsToEatPlant, wantsToEatCorpse
 
-    // DNA always stores weights for maxHiddenCount, whatever the actual brain size. That keeps
-    // the genome length constant, so crossover works without any special casing.
+    // DNA always stores weights for maxHiddenCount, whatever the actual brain size, and every
+    // weight sits at a slot that does not move when the brain grows:
+    //
+    //   layer 1: maxHiddenCount blocks of (inputCount + 1)     -- inputCount weights, then a bias
+    //   layer 2: outputCount    blocks of (maxHiddenCount + 1) -- maxHiddenCount weights, then a bias
+    //
+    // A brain with hc < maxHiddenCount reads the first hc blocks of layer 1 and the first hc
+    // weights of every layer-2 block. The rest is unexpressed and drifts neutrally, ready for
+    // the day a descendant grows into it.
+    //
+    // The fixed blocks are what makes brainSize evolvable at all. Reading the layers as one
+    // consecutive run instead would put the start of layer 2 at hc * (inputCount + 1), so a
+    // mutation from 4 to 5 neurons would shift the whole output layer by 31 genes and the child
+    // would inherit its parent's motor mapping scrambled -- a frame shift, not a new neuron.
+    static let layer1BlockSize  = inputCount + 1
+    static let layer2BlockSize  = maxHiddenCount + 1
+    static let layer2StartIndex = maxHiddenCount * layer1BlockSize
     static var totalWeightCount: Int {
-        let layer1 = inputCount * maxHiddenCount + maxHiddenCount
-        let layer2 = maxHiddenCount * outputCount + outputCount
-        return layer1 + layer2
+        layer2StartIndex + outputCount * layer2BlockSize
     }
 
     // MARK: - Weights
@@ -52,23 +65,24 @@ struct NeuralNetwork {
         // fire in the same direction.
         func w(_ v: Float) -> Float { v * 2 - 1 }
 
-        var idx = 0
         var wIH = [Float](); wIH.reserveCapacity(hc * NeuralNetwork.inputCount)
         var bH  = [Float](); bH.reserveCapacity(hc)
-        for _ in 0..<hc {
-            for _ in 0..<NeuralNetwork.inputCount {
-                wIH.append(w(weights[idx])); idx += 1
+        for h in 0..<hc {
+            let base = h * NeuralNetwork.layer1BlockSize
+            for i in 0..<NeuralNetwork.inputCount {
+                wIH.append(w(weights[base + i]))
             }
-            bH.append(w(weights[idx])); idx += 1
+            bH.append(w(weights[base + NeuralNetwork.inputCount]))
         }
 
         var wHO = [Float](); wHO.reserveCapacity(NeuralNetwork.outputCount * hc)
         var bO  = [Float](); bO.reserveCapacity(NeuralNetwork.outputCount)
-        for _ in 0..<NeuralNetwork.outputCount {
-            for _ in 0..<hc {
-                wHO.append(w(weights[idx])); idx += 1
+        for o in 0..<NeuralNetwork.outputCount {
+            let base = NeuralNetwork.layer2StartIndex + o * NeuralNetwork.layer2BlockSize
+            for h in 0..<hc {
+                wHO.append(w(weights[base + h]))
             }
-            bO.append(w(weights[idx])); idx += 1
+            bO.append(w(weights[base + NeuralNetwork.maxHiddenCount]))
         }
 
         weightsIH = wIH
