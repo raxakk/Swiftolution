@@ -60,11 +60,20 @@ Energy is never created out of nothing, and this is enforced at every transfer:
 - A predator eating at a kill takes its share *out of the corpse*, it is not
   granted separately.
 - Corpses decay and vanish rather than releasing energy.
-- Body mass is a separate store from the metabolic battery: it grows when well
-  fed, is catabolized when starving, and determines how nourishing the corpse is.
+- Body mass is a separate store from the metabolic battery, but it is inside
+  the same accounting: growth is paid out of energy (1.25 energy per unit) and
+  catabolism sells it back at 0.5, so mass is an investment with a conversion
+  loss. A newborn's starter body is bought out of the endowment its parents
+  paid. A corpse is therefore worth what was paid into the body, minus
+  whatever starvation already burned.
 
 The one exception is plant growth, which is the system's energy input, driven by
 a logistic curve toward the configured carrying capacity.
+
+Body mass was the rule's blind spot for a long time: granted in full at birth and
+grown with nothing debited, it injected roughly as much free carrion per run as
+the entire standing plant stock. See
+[KNOWN-ISSUES.md](KNOWN-ISSUES.md#2-body-mass-was-outside-the-energy-accounting).
 
 ## Specialization pressure
 
@@ -106,11 +115,12 @@ The map is a Voronoi diagram over random seed points using toroidal distance,
 which produces contiguous regions rather than per-tile noise. At least two water
 seeds are guaranteed, so dividing bodies of water always exist.
 
-### Terrain perception, and two bugs worth remembering
+### Terrain perception, and three bugs worth remembering
 
 Creatures sense terrain directionally: per biome, a bearing in `[-1, 1]` where
 the sign is left/right relative to the heading. Getting this to carry any
-information at all took two fixes, both instructive.
+information at all took two fixes, and making it mean the same thing for every
+creature took a third. All three are instructive.
 
 **Sampling the tile grid does not work.** The original implementation sampled
 biome *tile centres* within the sight radius. Tiles are 200 px apart, but real
@@ -129,7 +139,18 @@ is also the more realistic model. It stays tied to the sight gene, so range
 remains evolvable and costly.
 
 Measured on a live trace, this took the share of creature-ticks carrying a terrain
-signal (>= 0.05) from ~0% to 51%.
+signal (>= 0.05) from ~0% to about half.
+
+**The scale has to be phenotype-independent.** A third fix, later: the bearings
+were normalized by the total sample weight, which capped them at 0.24-0.36
+depending on `sightAngle` and made the same lake read ~35% weaker for a
+narrow-coned creature than for a wide-coned one. An inherited weight then meant
+different things in different phenotypes, and mutating `sightAngle` perturbed
+terrain behaviour as a side effect. Normalizing by the strongest reading that
+creature's own cone can produce restores the full `[-1, 1]` range and makes the
+sensor mean the same thing for everyone. Over ~1M creature-ticks with biomes on
+that moved the mean `|bearing|` from 0.04-0.11 to 0.24-0.30 and the share above
+the 0.05 threshold to 66-80%.
 
 ## The brain needs state
 

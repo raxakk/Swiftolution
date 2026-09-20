@@ -10,10 +10,11 @@ Source of truth throughout: `Swiftolution/Simulation/` and
 version current when this was written; behaviour, not line numbers, is the
 contract.
 
-This document describes the simulation as it actually behaves, including the
-places where that differs from what the design intends. Those places are
-marked and link to [KNOWN-ISSUES.md](KNOWN-ISSUES.md), which lists them as
-defects with evidence and a suggested fix.
+This document describes the simulation as it actually behaves.
+[KNOWN-ISSUES.md](KNOWN-ISSUES.md) is the record of the defects a review of
+this document turned up, all of them now fixed, with the evidence that found
+them and what was changed; several rules below read the way they do because
+of that review.
 
 ## Contents
 
@@ -39,17 +40,20 @@ defects with evidence and a suggested fix.
 
 ## The tick loop
 
-Each call to `World.tick()` runs nine phases, in this fixed order:
+Each call to `World.tick()` runs ten phases, in this fixed order:
 
 1. **Rebuild the spatial grid** from the current creature and food positions.
 2. **Move**: sense, think, act (see [Movement](#movement)).
-3. **Attack**: resolve all attacks declared this tick.
-4. **Feed**: resolve all eating declared this tick.
-5. **Check deaths**: energy and age mortality; spawn corpses.
-6. **Spawn minimum** (optional): top up a collapsing population.
-7. **Reproduce**: pair up willing, eligible creatures.
-8. **Grow food**: logistic plant growth.
-9. **Decay food**: remove corpses older than 1200 ticks.
+3. **Refile the moved creatures** in the grid, so that every query after this
+   point sees current cells. Food has not moved, so its half of the grid and
+   the density raster over it stand.
+4. **Attack**: resolve all attacks declared this tick.
+5. **Feed**: resolve all eating declared this tick.
+6. **Check deaths**: energy and age mortality; spawn corpses.
+7. **Spawn minimum** (optional): top up a collapsing population.
+8. **Reproduce**: pair up willing, eligible creatures.
+9. **Grow food**: logistic plant growth.
+10. **Decay food**: remove corpses older than 1200 ticks.
 
 Everything a creature does in a tick is decided once, at the start (step 2),
 from a single snapshot of the world. Attacking, feeding and reproducing all
@@ -91,14 +95,14 @@ differently sized brains. A smaller brain reads a fixed subset of the weight
 block and leaves the rest unexpressed; which slots those are does not depend
 on the brain size (see [Brain](#brain)).
 
-Genes that map onto a small integer do so by truncation, `Int(gene * N)`,
-which makes the **top bucket reachable only at exactly `gene == 1.0`**: a
-litter of 4 needs `genes[10] == 1.0`, and a 16 neuron brain needs
-`brainSize == 1.0`. At `0.999` both still yield the bucket below. The top
-value does occur, because `DNA.mutated` clamps overshooting mutations to
-exactly 1.0 and so puts a point mass on the boundary, but its frequency is an
-artefact of that clamp rather than of selection. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#8-the-top-bucket-of-every-intgene--n-mapping-is-a-point-mass).
+Genes that map onto a small integer are cut into **buckets of equal width**,
+`min(N - 1, Int(gene * N))` over `N` buckets: a litter of 4 comes from
+`genes[10] >= 0.75` and a 16 neuron brain from the top thirteenth of
+`brainSize`. Truncating over the span instead (`Int(gene * 3) + 1`) left the
+top value reachable only at exactly `gene == 1.0`, where `DNA.mutated` clamps
+overshooting mutations and piles up a point mass, so the largest litter and
+the largest brain existed as an artefact of that clamp rather than as
+strategies selection could find.
 
 **Mutation** (`DNA.mutated`, applied to every offspring gene-by-gene at the
 configured `mutationRate`, default 5%): a mutated gene receives one of three
@@ -206,9 +210,9 @@ rules apply throughout:
 | # | Input | Range | Notes |
 |---|-------|-------|-------|
 | 0 | angle to nearest food | `[-1, 1]` | left/right of heading |
-| 1 | distance to nearest food | `[0, 1]` | `1` = at sight-radius edge |
+| 1 | proximity of nearest food | `[0, 1]` | `0` = nothing in sight, `1` = right here |
 | 2 | angle to nearest creature | `[-1, 1]` | |
-| 3 | distance to nearest creature | `[0, 1]` | |
+| 3 | proximity of nearest creature | `[0, 1]` | `0` = nothing in sight |
 | 4 | own energy | `[0, 1]` | |
 | 5 | local density | `[0, 1]` | creatures within 55 px, capped at 8 |
 | 6 | approach velocity of nearest creature | `[-1, 1]` | `>0` closing in |
@@ -223,22 +227,25 @@ rules apply throughout:
 | 17 | local fertility | `[0, 1]` | biome underfoot |
 | 18 | local cover | `[0, 1]` | biome underfoot |
 | 19 | local difficulty | `[0, 1]` | biome underfoot |
-| 20-24 | terrain bearing (grassland/forest/desert/wetland/water) | `±0.24..0.36` in practice | see [Biomes](#biomes) |
+| 20-24 | terrain bearing (grassland/forest/desert/wetland/water) | `[-1, 1]`, fully used | see [Biomes](#biomes) |
 | 25-28 | working memory | `[-1, 1]` each | previous tick's first 4 hidden activations |
 | 29 | oscillator | `[-1, 1]` | `sin(2π × age / oscillatorPeriod)` |
 
-Distances and the "nearest creature" search share a single pass over the
+These inputs and the "nearest creature" search share a single pass over the
 spatial grid per creature, at `max(sightRadius, 80)`, so density and herding
-(80 px) are always covered even for short-sighted creatures.
+(80 px) are always covered even for short-sighted creatures. Every one of
+these queries measures **toroidal** distance, the shorter way round a world
+that wraps (see [Movement](#movement)).
 
-Two properties of this input set are worth knowing when reading a trace.
-First, an **empty** reading is not distinct from a real one: with no food in
-view, inputs 0, 1 and 7 read `0, 1, 0`, which is exactly a plant dead ahead
-at the edge of sight, and the "no creature" colour default `0.5/0.5/0.5` is a
-valid creature colour. Only the count inputs (12 and 14) separate the two
-cases. Second, the terrain bearings do not span `[-1, 1]` despite the clamp
-in the code; see [Biomes](#biomes). Both are listed in
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md).
+Inputs 1 and 3 are **proximity, not distance**, which is what keeps an empty
+field of view from reading as a real sighting. The empty case has to be
+reported as some number, and under a distance encoding that number (`1`, the
+sight-radius edge) was also a perfectly good reading of a plant dead ahead.
+Proximity puts the collision where it costs nothing: seeing nothing reads
+like something at the very edge of sight, which calls for the same behaviour
+anyway. The residue is the "no creature" colour default `0.5/0.5/0.5`, which
+is a valid creature colour; inputs 3 and 12 are what separate it from a real
+sighting.
 
 ### Outputs
 
@@ -269,7 +276,7 @@ directly. From `Creature`:
 | `sightAngle` | `sightAngle_gene * (2π - 2π/3) + 2π/3` rad; `120°` at 0, `360°` at 1 |
 | `attackRadius` | `size * 14 + aggression * 10 + 4` px |
 | `olfactionSmellRadius` | `olfaction_gene * 170 + 30` px |
-| `terrainSightRadius` | `sightRadius * 4`; see [DESIGN.md](DESIGN.md#terrain-perception-and-two-bugs-worth-remembering) |
+| `terrainSightRadius` | `sightRadius * 4`; see [DESIGN.md](DESIGN.md#terrain-perception-and-three-bugs-worth-remembering) |
 | `maxEnergy` | `size * 150 + 80` |
 | `hiddenCount` | `4 + brainSize_gene * (16 - 4)`, rounded down |
 | `maxSpeed` | `speed_gene * 2.5 + 0.3` px/tick |
@@ -281,30 +288,30 @@ and age effects applied elsewhere.
 ## Metabolism
 
 **Energy** is the universal currency; a creature dies the tick its energy
-reaches 0. **Body mass** is a separate store, the nutritional content that
-would be recovered from a corpse, decoupled from the energy battery:
+reaches 0. **Body mass** is a second store, the nutritional content that
+would be recovered from a corpse. It is a separate store but not a separate
+economy: every unit of it is bought from `energy` and sold back at a loss.
 
-- Above 60% energy: body mass grows, `+0.05/tick`, capped at `size * 60 + 20`.
-- Below 20% energy: body mass shrinks, `-0.3/tick`, floored at 0.
-- Between 20% and 60%: body mass is unchanged.
+- Above 60% energy: mass grows by up to `0.05/tick`, capped at
+  `maxBodyMass = size * 60 + 20`, and each unit costs `massBuildCost = 1.25`
+  energy. Growth never spends past the 60% line, so it cannot starve its
+  owner.
+- Below 20% energy: catabolism burns up to `0.3/tick` of mass, crediting
+  `massCatabolismYield = 0.5` energy per unit. Burning back what was built
+  therefore returns 40% of what it cost, which is what keeps mass an
+  investment rather than a second battery.
+- Between 20% and 60%: mass is unchanged.
+- At birth: a newborn starts at up to `maxBodyMass * 0.25`, bought out of the
+  endowment its parents paid (see [Reproduction](#reproduction)). The rest
+  has to be earned, so corpse value carries a signal about how well an
+  individual actually fed instead of restating its size gene.
 
-Two things about this store are worth stating plainly, because the wording
-elsewhere suggests otherwise (see
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#2-body-mass-is-outside-the-energy-accounting)):
-
-- **It sits outside the energy accounting.** Growth is not debited from
-  `energy`, and shrinking is not credited back to it. The shrink path is not
-  catabolism in the metabolic sense; it converts nothing, it only makes the
-  eventual corpse smaller. Newborns are additionally granted their full mass
-  for free at birth, so every birth injects `size * 60 + 20` of future
-  carrion that nothing paid for.
-- **Every creature is born at the cap.** `Creature.init` and the
-  `maxBodyMass` used in `consumeEnergy` are the same expression, so the
-  growth branch can only ever restore mass lost to starvation, never
-  accumulate past the birth state. Corpse value is therefore close to a pure
-  function of the size gene and says little about how well an individual fed
-  (see
-  [KNOWN-ISSUES.md](KNOWN-ISSUES.md#3-body-mass-starts-at-its-maximum)).
+This is the part of [Energy conservation](DESIGN.md#energy-conservation) that
+used to be missing. Mass grew with nothing debited and shrank with nothing
+credited, while every newborn was handed a full `size * 60 + 20` for free: at
+gene 0.5 that is 50 energy of future carrion per birth against 18 for a plant
+eaten by a herbivore, on the order of the entire standing plant stock over a
+2000 tick run. Scavenging was subsidised by the birth rate.
 
 **Senescence** sets in at 70% of the genetic lifespan and rises without
 bound afterward:
@@ -362,13 +369,16 @@ Applied from the network's `turnAngle` and `speed` outputs
    biomes are enabled), the move is rejected outright and the creature stays
    in place; turning still happened, so it can pivot away next tick.
 
-**Movement is the only thing that wraps.** Perception and interaction do not:
-every spatial query computes distances naively and clamps its cell iteration
-at the world edge instead of wrapping. Two creatures a few pixels apart across
-the x=0 or y=0 line therefore cannot see, smell, attack or mate with each
-other, even though either can walk across to the other's position. The biome
-map, by contrast, *is* generated with toroidal distance. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#1-perception-does-not-wrap-around-the-world).
+**The whole world wraps, not just movement.** Sight, smell, local density,
+herding, attack range, mate range and the biome map all measure the shorter
+way round: separations go through `World.torDx` / `torDy`, and the spatial
+grid wraps its cell iteration rather than clamping it at the world edge. Two
+creatures a few pixels apart across the x=0 or y=0 line see, smell, attack
+and mate with each other exactly as they would mid-world, and a pair
+straddling the seam breeds next to itself (`World.midpoint`) rather than on
+the far side of the map. Before this, those lines were invisible
+reproductive barriers that creatures could walk through but not perceive
+across, so speciation could form at a coordinate artefact.
 
 ## Feeding
 
@@ -401,10 +411,11 @@ of whether it is currently in a good patch.
 
 A food item can be eaten by at most one creature per tick (`feedCreatures`
 tracks consumed IDs within the tick and removes them once, afterward). Which
-one gets it is decided by iteration order over `creatures`, which is array
-order and therefore correlates with age, since survivors keep their order and
-newborns are appended. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#5-feeding-and-attacking-favour-early-array-positions).
+one gets it is decided by iteration order, and that order is **shuffled every
+tick**. Array order would not do: survivors keep their index and newborns are
+appended, so it correlates with age, and contested food would systematically
+go to the older creature -- a selection pressure nothing in the design asks
+for.
 
 ## Combat
 
@@ -437,30 +448,29 @@ attacker has been resolved, so damage does not depend on attack order and a
 creature can be both an attacker and a victim in the same tick without one
 resolution clobbering the other.
 
-The **credit** for a kill does depend on order. `victim.lastAttacker` is a
-single reference overwritten by each attacker in turn, so after a tick it
-holds whichever attacker came last in `creatures` array order, regardless of
-how much damage each dealt. That one creature receives the entire kill bonus
-below, and it also decides whether the death is classified as predation or
-starvation. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#4-the-kill-bonus-goes-to-an-arbitrary-attacker).
+The **credit** for a kill follows the damage. Every attack is recorded on the
+victim (`Creature.attacksTaken`: the attacker and what it dealt), and the
+kill bonus below is split in proportion to damage dealt. That is what gives
+cooperative hunting a gradient to climb; a single `lastAttacker` reference
+handed the whole bonus to whichever attacker came last in array order, so
+pack strategies were rewarded only indirectly, through the corpse everyone
+can scavenge.
 
 A successful kill does not directly grant the attacker energy; it produces
-a corpse (see [Death](#death)), and the recorded killer's share is taken out
-of that corpse's value the moment it is created.
+a corpse (see [Death](#death)), and the attackers' shares are taken out of
+that corpse's value the moment it is created.
 
-Attackers are iterated in plain array order, without the shuffle that
-[Reproduction](#reproduction) uses, so a creature earlier in the array
-strikes first. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#5-feeding-and-attacking-favour-early-array-positions).
+Attackers are iterated in plain array order, and that is safe: damage is
+accumulated into the delta dictionary and applied in one pass afterwards, so
+nobody strikes "first", and the bonus no longer depends on who came last.
 
 ## Death
 
 Checked once per tick, after combat and feeding, in a single pass
 (`World.checkDeaths`):
 
-- **Energy death**: `energy <= 0`. Classified as `predation` if something
-  attacked the creature this tick (`lastAttacker != nil`), otherwise
+- **Energy death**: `energy <= 0`. Classified as `predation` if anything
+  attacked the creature this tick (`attacksTaken` is non-empty), otherwise
   `starvation` (metabolism, hunger, or plant poisoning).
 - **Age death**: a Gompertz-like mortality roll, independent of energy:
   `deathChance = 0.0001 + (age / maxAge)² * 0.003`, rolled every tick against
@@ -475,14 +485,14 @@ decline diagnosable rather than mysterious (see
 
 **Corpse creation**: if the dead creature's `bodyMass > 1`, a `FoodSource`
 of type `.corpse` is spawned at its position with `energyValue = bodyMass`.
-Since body mass is granted in full at birth and only ever shrinks, that value
-is close to a pure function of the size gene (see
-[Metabolism](#metabolism)).
-If it was killed by a still-living attacker, that attacker immediately takes
-a share, `bodyMass * killer.aggression * 0.4`, credited to its own energy
-and **deducted from the corpse's value** before the corpse is placed. The
-kill bonus is not created out of nothing; it comes out of the body being
-consumed. The remainder (if `> 1`) becomes the corpse other creatures can
+Mass is earned over a lifetime and bought out of energy (see
+[Metabolism](#metabolism)), so that value says something about how well the
+individual fed rather than restating its size gene.
+Each still-living attacker immediately takes a share,
+`bodyMass * killer.aggression * 0.4 * (its damage / total damage)`, credited
+to its own energy and **deducted from the corpse's value** before the corpse
+is placed. The kill bonus is not created out of nothing; it comes out of the
+body being consumed. The remainder (if `> 1`) becomes the corpse other creatures can
 scavenge. Corpses decay and are removed after 1200 ticks
 (`World.decayFood`), releasing no energy in the process.
 
@@ -507,16 +517,24 @@ compatible, still-available, similarly-willing partner within
 A creature that finds no partner reproduces **asexually** instead. This is a
 fallback, not a separate strategy choice.
 
-**Energy cost and inheritance**. The `energy` transfer is conserved exactly,
-in that offspring never receive more than the parents pay, and `canReproduce`
-guarantees the parents can cover it. Body mass is not part of this accounting:
-each newborn is additionally granted a full `size * 60 + 20` of it for free
-(see [Metabolism](#metabolism)).
+**Energy cost and inheritance**. The transfer is conserved exactly: offspring
+never receive more than the parents pay, and `canReproduce` guarantees the
+parents can cover it. Body mass is inside that accounting. What a child
+receives is an **endowment** (`Creature.endow`), and its starter body is
+bought out of that endowment at the same conversion cost growth pays later:
 
-| | Cost per parent | Split across litter | Child receives |
+```
+bodyMass = min(maxBodyMass * 0.25, endowment * 0.25 / massBuildCost)
+energy   = endowment - bodyMass * massBuildCost
+```
+
+| | Cost per parent | Split across litter | Child's endowment |
 |---|---|---|---|
 | Sexual | `maxEnergy * 0.30` each | evenly | `min(childMaxEnergy * 0.6, pooledEnergy / litterSize)` |
 | Asexual | `maxEnergy * 0.40` | evenly | `min(childMaxEnergy * 0.6, parentInvestment / litterSize)` |
+
+Each child also carries a `generation`, one past its eldest parent; the
+world's founders are generation 0 (see [Observability](#observability)).
 
 Litter size is the `litterSize` gene (`1..4`), capped by remaining room
 under `maxPopulation`. Sexual offspring DNA is `parent.crossed(with:
@@ -524,8 +542,8 @@ partner)` then `.mutated(...)`; asexual offspring DNA is just
 `parent.mutated(...)`, a clone with mutation and no crossover partner.
 
 Offspring spawn at a **dispersed** position, a random point 10-30 px from
-the birth location (the parents' midpoint for sexual reproduction, the
-parent's own position for asexual), so litters do not reinforce their own
+the birth location (the parents' toroidal midpoint for sexual reproduction,
+the parent's own position for asexual), so litters do not reinforce their own
 starting cluster. With biomes on, a dispersed point that would land in water
 is retried up to 8 times, falling back to the origin.
 
@@ -604,26 +622,21 @@ range at all. The radius used is `terrainSightRadius = sightRadius * 4`: a
 creature standing inside one ~600 px biome region would otherwise see the
 same biome in every direction and the bearing would cancel to ~0 regardless
 of sampling resolution. See
-[DESIGN.md](DESIGN.md#terrain-perception-and-two-bugs-worth-remembering) for
-the two bugs this fixed and the measured effect.
+[DESIGN.md](DESIGN.md#terrain-perception-and-three-bugs-worth-remembering)
+for the bugs this fixed and the measured effect.
 
-The code clamps the result to `[-1, 1]`, but that clamp never binds. Because
-the contributions are normalized by the total sample weight and cancel
-symmetrically, the largest magnitude actually attainable, with one biome
-filling exactly the most favourable half of the cone, is:
-
-| `sightAngle` | max attainable `|bearing|` |
-|---|---|
-| 120° | 0.239 |
-| 180° | 0.320 |
-| 240° | 0.362 |
-| 300° | 0.363 |
-| 360° | 0.327 |
-
-So the sensor uses about a third of its nominal range, and its scale depends
-on the `sightAngle` gene: the same lake reads roughly 35% weaker for a
-narrow-coned creature than for a wide-coned one. See
-[KNOWN-ISSUES.md](KNOWN-ISSUES.md#6-terrain-bearings-never-reach-their-documented-range).
+The contributions are normalized by the **largest magnitude that creature's
+own cone can produce**: one biome filling exactly the half of the cone that
+points hardest to one side. So `±1` means the same thing at every
+`sightAngle`, and the full range is genuinely reachable. Normalizing by the
+total sample weight instead capped the sensor at 0.24 (120° cone) to 0.36
+(300° cone), about a third of its nominal range, and made the scale depend on
+the `sightAngle` gene: the same lake read roughly 35% weaker for a
+narrow-coned creature than for a wide-coned one, so an inherited weight meant
+different things in different phenotypes. Measured over ~1M creature-ticks
+with biomes on, the largest bearing seen went from 0.37 to 1.00, the mean
+from 0.04-0.11 to 0.24-0.30, and the share of creature-ticks carrying a
+signal `>= 0.05` from 29-61% to 66-80%.
 
 ## Seasons
 
@@ -686,14 +699,14 @@ at all.
 `forEachCreature`, mate search, attack search) so none of them are O(n²)
 over the population.
 
-It is rebuilt in step 1 of the tick, before creatures move in step 2, while
-attacking, feeding and reproduction query it afterwards. Because `Creature`
-is a reference type the positions read out of the cells are current; only the
-cell assignment is one movement step old. That can only ever cause a query to
-miss a creature that moved into range this tick, bounded by one step (about
-2.8 px against 80 px cells). Cell iteration also clamps at the world edge
-rather than wrapping, which is the mechanism behind
-[the perception seam](#movement).
+It is rebuilt in full in step 1 of the tick, and the creature half is refiled
+again in step 3, right after movement, so everything that queries it
+afterwards sees current cells. (Food does not move within a tick, so its
+cells and the density raster over it are built once.) Cell iteration
+**wraps** at the world edge instead of clamping: the block around a point
+near x=0 continues at the far edge, and a wrapped query box becomes up to
+four boxes in the summed-area table. Away from the seam, the common case, it
+is still a single block and costs two comparisons extra.
 
 - **Coarse grid**: 80x80 px cells, flat arrays (not a dictionary, so no
   hashing), rebuilt every tick with `removeAll(keepingCapacity:)` so it is
@@ -745,12 +758,13 @@ Built to be watched, by both the app UI and automated tooling:
   `StatisticsTracker` additionally records a rolling history (every 10
   ticks, last 300 samples) of population and trait averages for the charts.
 - **Counters** on `World`: `tickCount`, `totalBirths`, `totalDeaths`, the
-  three death-cause tallies, and `generation`. Note that `generation` is
-  incremented once per tick in which any birth occurred, so it counts
-  breeding ticks rather than generations of descent: a 2000 tick run with a
-  mean age of 221 reports about 1287, where the true figure is nearer 10. It
-  is labelled "Generation" in both the sidebar and the headless table. See
-  [KNOWN-ISSUES.md](KNOWN-ISSUES.md#7-generation-does-not-count-generations).
+  three death-cause tallies, and `generation`. The last is the **mean
+  generation of descent** over the living population: every creature carries
+  one, founders are 0 and a child is one past its eldest parent. It used to
+  be a counter incremented once per tick in which any birth occurred, which
+  converges on the tick count in a busy population (a 2000 tick run with a
+  mean age of 221 reported about 1287 where the true figure was nearer 10)
+  while being labelled "Generation" in the sidebar and the headless table.
 - **`Tools/Headless/run.sh`**: compiles and runs the UI-free simulation
   core directly with `swiftc`, uncapped, several thousand ticks/second. Exposes
   all of the above plus an ASCII world map, trait histograms, NDJSON

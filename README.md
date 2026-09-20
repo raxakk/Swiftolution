@@ -24,7 +24,8 @@ Everything else about its behaviour comes out of the network.
 **Brains.** A network with 30 inputs, one hidden layer of 4-16 neurons (the size
 is itself a gene) and 6 outputs: turn, speed, reproduce, attack, eat plants, eat
 carrion. 25 of the inputs are sensory: the nearest food and creature in the field
-of view, local density, herding direction, the colour of the nearest creature,
+of view (as an angle and a proximity, where 0 means nothing is in sight at all),
+local density, herding direction, the colour of the nearest creature,
 own energy, own senescence, recent feeding rate, plant smell, the biome underfoot,
 and a directional bearing per biome across the landscape. The remaining five are
 internal — four values the network wrote for itself last tick, which give it a
@@ -33,8 +34,10 @@ behaviour run without an external trigger.
 
 **Metabolism.** Energy is conserved. Maintenance costs scale quadratically with
 the traits that drive them, so specialists beat generalists. Body mass is stored
-separately from the metabolic battery: it builds up when well fed, is
-catabolized when starving, and determines how nourishing the corpse will be.
+separately from the metabolic battery but paid for out of it: it is bought with
+energy when well fed, catabolized back at a loss when starving, and determines
+how nourishing the corpse will be. A creature is born with a quarter of the mass
+it could carry, so the rest is something it has to earn.
 
 **Reproduction.** Sexual when a compatible partner is nearby, asexual otherwise.
 Parents pay for their offspring out of their own energy; children never receive
@@ -56,9 +59,11 @@ The exact mechanics, every formula and constant tick by tick, are in
 [docs/MECHANICS.md](docs/MECHANICS.md). The reasoning behind the numbers (why
 carrion digestibility has a floor, why genetic distance uses four genes rather
 than the whole genome, why terrain has its own perception horizon) is in
-[docs/DESIGN.md](docs/DESIGN.md). Where the implementation does not yet match
-that intent, [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) says so, with
-evidence and a suggested fix.
+[docs/DESIGN.md](docs/DESIGN.md). A review of those two documents against the
+code turned up ten defects, from perception not wrapping around the world to
+body mass sitting outside the energy accounting;
+[docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) records each one, the evidence
+that found it, and how it was fixed.
 
 ## Running it
 
@@ -134,7 +139,7 @@ Swiftolution/UI/           SwiftUI sidebar, inspector and charts
 Tools/Headless/            the console runner
 docs/MECHANICS.md          how the simulation works, formula by formula
 docs/DESIGN.md             why the simulation is tuned the way it is
-docs/KNOWN-ISSUES.md       reviewed defects, with evidence and a suggested fix
+docs/KNOWN-ISSUES.md       reviewed defects, with evidence and how they were fixed
 ```
 
 Every file in `Simulation/` imports nothing but Foundation and CoreGraphics. That is

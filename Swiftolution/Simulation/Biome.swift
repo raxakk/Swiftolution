@@ -142,7 +142,9 @@ struct BiomeMap {
     // Direction-resolved terrain perception across the sight cone: one value in [-1, 1]
     // per biome: the sign is the direction (-1 left ... +1 right, relative to the heading)
     // and the magnitude is how strongly that biome sits in the field of view. Nearer samples
-    // count for more; the sum is normalized over all samples so the values stay bounded.
+    // count for more; the sum is normalized by the strongest reading the creature's own cone
+    // can produce, so +/-1 means "that biome fills the half of my view that points hardest to
+    // one side" for every phenotype alike.
     // Uniform terrain all around yields ~0 (the contributions cancel), which is correct:
     // there is no directional signal to report.
     //
@@ -171,7 +173,13 @@ struct BiomeMap {
 
         // Left/right accumulator per biome: (grassland, forest, desert, wetland, water)
         var lr: (Float, Float, Float, Float, Float) = (0, 0, 0, 0, 0)
-        var totalW: Float = 0
+        // The largest magnitude this cone can produce at all: one biome filling exactly the
+        // half of the cone that points furthest sideways. Normalizing by the total sample
+        // weight instead left the sensor using about a third of its nominal range, and the
+        // scale then depended on sightAngle, so the same lake read 35% weaker for a narrow
+        // cone than for a wide one and an inherited weight meant different things in
+        // different phenotypes.
+        var maxMagnitude: Float = 0
 
         for r in 0..<rings {
             let frac = (Float(r) + 0.5) / Float(rings)   // 0.17, 0.5, 0.83 of the sight radius
@@ -182,8 +190,9 @@ struct BiomeMap {
                 let angle  = heading + offset
                 let x = px + cos(angle) * dist
                 let y = py + sin(angle) * dist
-                totalW += w
-                let contrib = w * sin(offset)            // -1 left ... +1 right
+                let lateral = sin(offset)               // -1 left ... +1 right
+                maxMagnitude += w * max(0, lateral)
+                let contrib = w * lateral
                 // biome(at:) clamps out-of-world points to the edge tile, so at the world
                 // border a creature simply perceives more of that same edge terrain.
                 switch biome(at: CGPoint(x: CGFloat(x), y: CGFloat(y))) {
@@ -196,8 +205,8 @@ struct BiomeMap {
             }
         }
 
-        guard totalW > 0 else { return (0, 0, 0, 0, 0) }
-        let inv = 1 / totalW
+        guard maxMagnitude > 0 else { return (0, 0, 0, 0, 0) }
+        let inv = 1 / maxMagnitude
         @inline(__always) func c(_ v: Float) -> Float { max(-1, min(1, v * inv)) }
         return (c(lr.0), c(lr.1), c(lr.2), c(lr.3), c(lr.4))
     }

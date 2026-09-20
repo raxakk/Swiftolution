@@ -22,9 +22,14 @@ final class Creature {
 
     var energy: Float
     // Body mass: accumulated nutritional value (muscle, fat), separate from the metabolic
-    // battery. It grows while well fed and is broken down by muscle catabolism when starving.
+    // battery but not outside it. Energy buys mass while well fed, and catabolism sells it
+    // back at a loss while starving, so a corpse is worth only what was paid into it.
     // It determines how nourishing the corpse will be.
     var bodyMass: Float
+    // Generation of descent: founders are 0, every child is one past its eldest parent. It is
+    // what "Generation" in the UI and the headless table now means (the world reports the mean
+    // over the living population), rather than a count of ticks in which something was born.
+    let generation: Int
     var age: Int = 0
     var isAlive: Bool { energy > 0 }
 
@@ -55,7 +60,21 @@ final class Creature {
     // The last perception, only filled in when World.sensorRecording is on (tracing and
     // diagnostics). It is what makes a network decision explainable: perception -> action.
     var lastSensors: SensorInput?
-    weak var lastAttacker: Creature?
+    // Damage taken this tick, per attacker. Cleared at the start of every tick, so it holds
+    // exactly the attacks that led to this tick's deaths. The kill bonus is split along these
+    // shares: with several attackers on one victim, whoever did the work gets paid for it.
+    // The references are weak so that two creatures killing each other cannot keep each other
+    // alive in memory after both leave the population.
+    struct AttackRecord {
+        weak var attacker: Creature?
+        var damage: Float
+    }
+    private(set) var attacksTaken: [AttackRecord] = []
+    var wasAttackedThisTick: Bool { !attacksTaken.isEmpty }
+
+    func recordAttack(from attacker: Creature, damage: Float) {
+        attacksTaken.append(AttackRecord(attacker: attacker, damage: damage))
+    }
 
     // MARK: - Values derived from DNA
 
@@ -80,10 +99,18 @@ final class Creature {
     static let terrainSightFactor: CGFloat = 4
     var terrainSightRadius: CGFloat { sightRadius * Creature.terrainSightFactor }
     var maxEnergy:    Float   { dna.size * 150 + 80 }
-    var hiddenCount:  Int     {
-        NeuralNetwork.minHiddenCount +
-        Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
+    var maxBodyMass:  Float   { dna.size * 60 + 20 }
+    var hiddenCount:  Int     { Creature.hiddenCount(for: dna.brainSize) }
+
+    // brainSize -> neuron count, in equally wide buckets. Truncating over the span instead
+    // (min + Int(gene * span)) left the largest brain reachable only at gene == 1.0 exactly,
+    // i.e. as a point mass produced by the mutation clamp rather than by selection.
+    static func hiddenCount(for brainSize: Float) -> Int {
+        let buckets = NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount + 1
+        let bucket  = min(buckets - 1, Int(brainSize * Float(buckets)))
+        return NeuralNetwork.minHiddenCount + max(0, bucket)
     }
+
     var maxSpeed:     Float   { dna.speed * 2.5 + 0.3 }
 
     var canReproduce: Bool {
@@ -93,16 +120,34 @@ final class Creature {
         return energy >= maxEnergy * Float(threshold) && age > dna.maxAge / 10
     }
 
+    // MARK: - Body mass economy
+
+    // Mass is an investment, not free matter: building it is paid out of `energy` and burning
+    // it back returns less than was paid, which is what makes catabolism a last resort rather
+    // than a free second battery.
+    static let massBuildCost:        Float = 1.25   // energy spent per unit of mass built
+    static let massCatabolismYield:  Float = 0.5    // energy recovered per unit of mass burned
+    static let massGrowthPerTick:    Float = 0.05
+    static let massCatabolismPerTick: Float = 0.3
+    // A newborn's starter body, as a share of its own maximum. The rest has to be earned by
+    // feeding, so corpse value carries a signal about how well an individual actually lived.
+    static let birthMassFraction: Float = 0.25
+    // How much of the birth endowment may be spent on that starter body. The remainder stays
+    // metabolic energy, so a cheaply fed litter starts smaller rather than starting in debt.
+    static let birthMassShare:    Float = 0.25
+
     // MARK: - Init
 
-    init(dna: DNA, position: CGPoint) {
-        self.dna      = dna
-        self.position = position
-        self.energy   = dna.size * 80 + 40
-        self.bodyMass = dna.size * 60 + 20   // starting mass is proportional to body size
-        let hc = NeuralNetwork.minHiddenCount +
-            Int(dna.brainSize * Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount))
-        self.brain    = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: hc)
+    init(dna: DNA, position: CGPoint, generation: Int = 0) {
+        self.dna        = dna
+        self.position   = position
+        self.generation = generation
+        self.energy     = dna.size * 80 + 40
+        // A starter body, proportional to body size but well short of the cap. Founders get it
+        // for free (they are the world's initial seed); offspring buy theirs in endow(with:).
+        self.bodyMass   = (dna.size * 60 + 20) * Creature.birthMassFraction
+        self.brain      = NeuralNetwork(weights: dna.neuralWeights(),
+                                        hiddenCount: Creature.hiddenCount(for: dna.brainSize))
         self.headingCos = cos(heading)
         self.headingSin = sin(heading)
     }
@@ -111,7 +156,7 @@ final class Creature {
 
     func tick() {
         age += 1
-        lastAttacker = nil
+        attacksTaken.removeAll(keepingCapacity: true)
         recentFeedingRate = recentFeedingRate * 0.95 + energyGainedThisTick * 0.05
         energyGainedThisTick = 0
         consumeEnergy()
@@ -181,6 +226,15 @@ final class Creature {
         }
     }
 
+    // The birth endowment the parents paid, split into a starter body and metabolic energy.
+    // Nothing is created here: the mass is bought out of the endowment at the same conversion
+    // cost growth pays later, so a child never carries more than its parents put in.
+    func endow(with endowment: Float) {
+        let affordable = endowment * Creature.birthMassShare / Creature.massBuildCost
+        bodyMass = max(0, min(maxBodyMass * Creature.birthMassFraction, affordable))
+        energy   = max(0, endowment - bodyMass * Creature.massBuildCost)
+    }
+
     // MARK: - Private
 
     private func consumeEnergy() {
@@ -205,12 +259,24 @@ final class Creature {
         let baseCosts = baseCost + sizeCost + speedCost + aggressionCost + brainCost + sightCost + olfactionCost + turnCost
         energy -= baseCosts * (1 + senescence * 0.5)
 
-        // Well fed (>60%): build body mass. Starving (<20%): muscle catabolism.
-        let maxBodyMass = dna.size * 60 + 20
+        // Well fed (>60%): buy body mass out of energy. Starving (<20%): burn it back at a
+        // conversion loss. Both directions run through `energy`, so mass stays inside the
+        // energy accounting instead of appearing beside it: a corpse is worth what was paid
+        // into it, minus what starvation already burned.
         if energy > maxEnergy * 0.6 {
-            bodyMass = min(maxBodyMass, bodyMass + 0.05)
+            // Never spend past the well-fed line, so growth cannot starve its owner.
+            let affordable = (energy - maxEnergy * 0.6) / Creature.massBuildCost
+            let grown = min(Creature.massGrowthPerTick, maxBodyMass - bodyMass, affordable)
+            if grown > 0 {
+                bodyMass += grown
+                energy   -= grown * Creature.massBuildCost
+            }
         } else if energy < maxEnergy * 0.2 {
-            bodyMass = max(0, bodyMass - 0.3)
+            let burned = min(Creature.massCatabolismPerTick, bodyMass)
+            if burned > 0 {
+                bodyMass -= burned
+                energy    = min(maxEnergy, energy + burned * Creature.massCatabolismYield)
+            }
         }
     }
 }

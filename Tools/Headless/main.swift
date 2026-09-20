@@ -371,8 +371,9 @@ func printTraceLegend() {
     print("""
     ── TRACE ─────────────────────────────────────────────────────────────────────
       line 1: t=tick #id (x,y) h=heading E=energy fraction a=age [biome]
-        F(a d T n) nearest food: a angle (-left/+right), d distance, T P=plant/C=corpse, n count in sight
-        C(a d v n) nearest creature: v approach (+closing in/-fleeing)
+        F(a p T n) nearest food: a angle (-left/+right), p proximity (0 none in sight, 1 here),
+                   T P=plant/C=corpse, n count in sight
+        C(a p v n) nearest creature: v approach (+closing in/-fleeing)
         dn density | hd herding direction | sm plant smell | fd feeding rate | sn senescence
         fert/cov/dif biome underfoot | bear terrain bearing (. grassland  f forest  d desert  w wetland  ~ water)
       line 2: => network decision: turn (-left/+right) spd rep atk eatP eatC
@@ -400,8 +401,8 @@ func printTraceLine(_ c: Creature, _ world: World, _ o: Options) {
     let foodT = s.nearestFoodType > 0.5 ? "K" : "P"
     print("t=\(world.tickCount) #\(shortID(c)) (\(Int(c.position.x)),\(Int(c.position.y)))"
         + " h\(sg(c.heading)) E\(n2(c.energy / c.maxEnergy)) a\(c.age)\(biome)"
-        + " | F(a\(sg(s.angleToFood)) d\(n2(s.distanceToFood)) \(foodT) n\(n2(s.visibleFoodCount, 1)))"
-        + " | C(a\(sg(s.angleToCreature)) d\(n2(s.distanceToCreature)) v\(sg(s.approachVelocity)) n\(n2(s.visibleCreatureCount, 1)))"
+        + " | F(a\(sg(s.angleToFood)) p\(n2(s.foodProximity)) \(foodT) n\(n2(s.visibleFoodCount, 1)))"
+        + " | C(a\(sg(s.angleToCreature)) p\(n2(s.creatureProximity)) v\(sg(s.approachVelocity)) n\(n2(s.visibleCreatureCount, 1)))"
         + " | dn\(n2(s.localDensity)) hd\(sg(s.avgNearbyHeading)) sm\(n2(s.localPlantDensity)) fd\(n2(s.recentFeedingRate)) sn\(n2(s.ownSenescence))"
         + " | fert\(n2(s.localFertility)) cov\(n2(s.localCover)) dif\(n2(s.localDifficulty))"
         + " | bear .\(sg(s.terrainBearingGrassland)) f\(sg(s.terrainBearingForest)) d\(sg(s.terrainBearingDesert)) w\(sg(s.terrainBearingWetland)) ~\(sg(s.terrainBearingWater))"

@@ -17,8 +17,11 @@ struct DNA {
     var red:                   Float { genes[7] }
     var green:                 Float { genes[8] }
     var blue:                  Float { genes[9] }
-    // 0 -> 1 offspring (r-strategist: many, cheap), 1 -> 4 (K-strategist: few, expensive)
-    var litterSize:            Int   { max(1, Int(genes[10] * 3) + 1) }   // [1, 4]
+    // 0 -> 1 offspring (r-strategist: many, cheap), 1 -> 4 (K-strategist: few, expensive).
+    // Four buckets of equal width. Truncating over a span of 3 instead (Int(gene * 3) + 1) put
+    // a litter of 4 out of reach except at gene == 1.0 exactly, where the mutation clamp piles
+    // up a point mass: the largest litter existed as an artefact rather than as a strategy.
+    var litterSize:            Int   { min(4, Int(genes[10] * 4) + 1) }   // [1, 4]
     // Sight angle: gene=0 -> 120 degrees (narrow forward cone), gene=1 -> 360 (full circle)
     var sightAngle:            Float { genes[11] }
     // Turn rate: gene=0 -> 0.05 rad/tick (sluggish), gene=1 -> 0.40 rad/tick (nimble)

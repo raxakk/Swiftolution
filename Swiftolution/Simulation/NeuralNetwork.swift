@@ -141,15 +141,21 @@ struct NeuralNetwork {
 
 struct SensorInput {
     var angleToFood:               Float   // -1 (left) to +1 (right), relative to the heading
-    var distanceToFood:            Float   // 0 = right next to it, 1 = edge of the sight radius
+    // Proximity rather than distance: 0 = nothing in sight, 1 = right on top of it. The empty
+    // case has to be reported as some number, and under a distance encoding that number ("1",
+    // at the sight-radius edge) was also a perfectly good real reading. Proximity moves the
+    // collision to where it costs nothing: "nothing visible" reads like food at the very edge
+    // of sight, which warrants the same behaviour anyway.
+    var foodProximity:             Float
     var angleToCreature:           Float
-    var distanceToCreature:        Float
+    var creatureProximity:         Float
     var ownEnergy:                 Float   // 0 = empty, 1 = full
     var localDensity:              Float   // 0 = alone, 1 = densely surrounded by others
     var approachVelocity:          Float   // >0 = creature closing in, <0 = fleeing; normalized [-1, +1]
     var nearestFoodType:           Float   // 0 = plant, 1 = corpse
     var avgNearbyHeading:          Float   // mean heading of neighbours relative to own [-1, +1]
-    // Color of the nearest visible creature (genes in [0,1]; 0.5/0.5/0.5 when none is visible)
+    // Color of the nearest visible creature (genes in [0,1]; 0.5/0.5/0.5 when none is visible,
+    // which is itself a valid colour -- creatureProximity == 0 is what disambiguates it)
     var nearestCreatureRed:        Float
     var nearestCreatureGreen:      Float
     var nearestCreatureBlue:       Float
@@ -185,9 +191,9 @@ struct SensorInput {
     // Writes the inputs into a (stack) buffer; the order defines the network's input layout.
     func write(to buf: UnsafeMutableBufferPointer<Float>) {
         buf[0]  = angleToFood
-        buf[1]  = distanceToFood
+        buf[1]  = foodProximity
         buf[2]  = angleToCreature
-        buf[3]  = distanceToCreature
+        buf[3]  = creatureProximity
         buf[4]  = ownEnergy
         buf[5]  = localDensity
         buf[6]  = approachVelocity

@@ -28,20 +28,30 @@ struct SwiftolutionTests {
         #expect(child.genes.count == a.genes.count)
     }
 
+    // Four buckets of equal width, and the top one is an interval rather than the single
+    // point gene == 1.0 that truncating over a span of 3 used to leave it as.
     @Test func dnaLitterSizeMapping() {
         var dna = DNA.random()
-        // genes[10] = 0.0 -> max(1, Int(0*3)+1) = 1
-        dna.genes[10] = 0.0
-        #expect(dna.litterSize == 1)
-        // genes[10] = 1.0 -> max(1, Int(3)+1) = 4
-        dna.genes[10] = 1.0
-        #expect(dna.litterSize == 4)
-        // genes[10] = 0.5 -> max(1, Int(1.5)+1) = 2
-        dna.genes[10] = 0.5
-        #expect(dna.litterSize == 2)
-        // genes[10] = 0.667 -> max(1, Int(2.0)+1) = 3
-        dna.genes[10] = 0.667
-        #expect(dna.litterSize == 3)
+        dna.genes[10] = 0.0;  #expect(dna.litterSize == 1)
+        dna.genes[10] = 0.24; #expect(dna.litterSize == 1)
+        dna.genes[10] = 0.26; #expect(dna.litterSize == 2)
+        dna.genes[10] = 0.51; #expect(dna.litterSize == 3)
+        dna.genes[10] = 0.76; #expect(dna.litterSize == 4)
+        dna.genes[10] = 1.0;  #expect(dna.litterSize == 4)
+    }
+
+    // The same equal-width mapping for the brain-size gene: the largest brain has to be
+    // reachable from an interval of gene values, not only from the clamp at exactly 1.0.
+    @Test func brainSizeBucketsAreEqualWidthAndReachTheTop() {
+        let span = Float(NeuralNetwork.maxHiddenCount - NeuralNetwork.minHiddenCount + 1)
+        #expect(Creature.hiddenCount(for: 0.0)   == NeuralNetwork.minHiddenCount)
+        #expect(Creature.hiddenCount(for: 1.0)   == NeuralNetwork.maxHiddenCount)
+        // A whole bucket below 1.0 already reaches the maximum.
+        #expect(Creature.hiddenCount(for: 1.0 - 0.5 / span) == NeuralNetwork.maxHiddenCount)
+        // Every bucket is one neuron wide, and every neuron count is reachable.
+        var seen = Set<Int>()
+        for i in 0..<200 { seen.insert(Creature.hiddenCount(for: Float(i) / 200)) }
+        #expect(seen.count == Int(span))
     }
 
     @Test func dnaMaxAgeMapping() {
@@ -176,9 +186,9 @@ struct SwiftolutionTests {
             let nn = NeuralNetwork(weights: dna.neuralWeights(), hiddenCount: 8)
             let input = SensorInput(
                 angleToFood:          Float.random(in: -1...1),
-                distanceToFood:       Float.random(in: 0...1),
+                foodProximity:        Float.random(in: 0...1),
                 angleToCreature:      Float.random(in: -1...1),
-                distanceToCreature:   Float.random(in: 0...1),
+                creatureProximity:    Float.random(in: 0...1),
                 ownEnergy:            Float.random(in: 0...1),
                 localDensity:         Float.random(in: 0...1),
                 approachVelocity:     Float.random(in: -1...1),
@@ -529,8 +539,10 @@ struct SwiftolutionTests {
     @Test func corpseEnergyDerivedFromBodyMass() {
         let world = World(size: CGSize(width: 200, height: 200))
         var dna = DNA.random()
-        dna.genes[2] = 0.5  // size = 0.5 → bodyMass starts at 0.5*60+20 = 50
+        // size = 0.5 → maxBodyMass 50, of which a newborn starts with birthMassFraction
+        dna.genes[2] = 0.5
         let creature = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+        #expect(abs(creature.bodyMass - 50 * Creature.birthMassFraction) < 0.01)
         let expectedCorpseEnergy = creature.bodyMass * 1.0
         creature.energy = -1  // force death (isAlive = energy > 0 → false)
         world.creatures = [creature]
@@ -929,7 +941,7 @@ struct SwiftolutionTests {
         let victim = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
         let killer = Creature(dna: DNA.random(), position: CGPoint(x: 100, y: 100))
         victim.energy = -1
-        victim.lastAttacker = killer                 // attacked this tick -> predation
+        victim.recordAttack(from: killer, damage: 10) // attacked this tick -> predation
         world.creatures = [victim]                   // the killer need not be in the list
         world.checkDeaths()
         #expect(world.deathsByPredation == 1)
@@ -961,6 +973,360 @@ struct SwiftolutionTests {
         #expect(world.events.first?.cause == .starvation)
     }
 
+    // MARK: - A wrapping world: perception across the seam
+
+    // Movement has always wrapped; perception used to stop dead at x=0 and y=0. Two creatures a
+    // few pixels apart across that line could walk through each other but not see, smell,
+    // attack or mate with each other, which made the world edge an invisible reproductive
+    // barrier and a source of speciation that nothing in the model asks for.
+    @Test func sightReachesAcrossTheWorldSeam() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        let observer = Creature(dna: DNA.random(), position: CGPoint(x: 395, y: 200))
+        let neighbour = Creature(dna: DNA.random(), position: CGPoint(x: 5, y: 200))
+        world.creatures = [observer, neighbour]
+        world.rebuildGrid()
+        // 10 px apart the short way round, 390 px the long way.
+        #expect(world.nearestCreature(to: observer, within: 40) === neighbour)
+        #expect(world.nearestCreature(to: neighbour, within: 40) === observer)
+    }
+
+    @Test func sightStopsAtTheTrueToroidalDistance() {
+        // The control: the wrap must not make everything visible. Half a world apart is the
+        // furthest two points can be, and that stays out of range.
+        let world = World(size: CGSize(width: 400, height: 400))
+        let a = Creature(dna: DNA.random(), position: CGPoint(x: 0, y: 200))
+        let b = Creature(dna: DNA.random(), position: CGPoint(x: 200, y: 200))
+        world.creatures = [a, b]
+        world.rebuildGrid()
+        #expect(world.nearestCreature(to: a, within: 40) == nil)
+        #expect(world.nearestCreature(to: a, within: 210) === b)
+    }
+
+    @Test func toroidalDeltasTakeTheShorterWayRound() {
+        let world = World(size: CGSize(width: 400, height: 300))
+        #expect(abs(world.torDx(390) - (-10)) < 0.001)
+        #expect(abs(world.torDx(-390) - 10)  < 0.001)
+        #expect(abs(world.torDy(290) - (-10)) < 0.001)
+        #expect(abs(world.torDx(30) - 30)    < 0.001)
+    }
+
+    // A pair straddling the seam must produce offspring next to themselves, not in the middle
+    // of the world on the far side.
+    @Test func midpointOfASeamCrossingPairStaysBetweenThem() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        let mid = world.midpoint(CGPoint(x: 390, y: 10), CGPoint(x: 10, y: 390))
+        #expect(mid.x == 0)
+        #expect(mid.y == 0)
+    }
+
+    @Test func smellReachesAcrossTheWorldSeam() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        var dna = DNA.random()
+        dna.genes[13] = 1.0   // olfaction: 200 px smell radius
+        let observer = Creature(dna: dna, position: CGPoint(x: 395, y: 200))
+        for i in 0..<20 {
+            world.foodSources.append(FoodSource(position: CGPoint(x: CGFloat(i), y: 200)))
+        }
+        world.plantCount = 20
+        world.creatures  = [observer]
+        world.sensorRecording = true
+        world.rebuildGrid()
+        world.tick()
+        // The plants sit 5-25 px away across the seam; without wrapping the density raster
+        // clamps to the world edge and reports nothing at all.
+        #expect((observer.lastSensors?.localPlantDensity ?? 0) > 0)
+    }
+
+    @Test func matingReachesAcrossTheWorldSeam() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        world.maxPopulation = 100
+        world.mutationRate  = 0
+        var dna = DNA.random()
+        dna.genes[4]  = 0.5   // maxAge 500 -> mature past age 50
+        dna.genes[5]  = 0.0   // reproduce from 55% energy
+        dna.genes[10] = 0.0   // litter of 1
+        let a = Creature(dna: dna, position: CGPoint(x: 395, y: 200))
+        let b = Creature(dna: dna, position: CGPoint(x: 5,   y: 200))
+        for c in [a, b] {
+            c.age = 100
+            c.energy = c.maxEnergy * 0.9
+            c.lastAction = ActionOutput(fromArray: [0.5, 0.0, 1.0, 0.0])
+        }
+        world.creatures = [a, b]
+        world.rebuildGrid()
+        world.reproduceCreatures()
+        // Sexual reproduction (both parents paid), not two asexual fallbacks.
+        #expect(world.creatures.count == 3)
+    }
+
+    // MARK: - The spatial grid tracks movement
+
+    @Test func gridRefilesCreaturesAfterTheyMove() {
+        let grid = SpatialGrid(cellSize: 80, worldSize: CGSize(width: 400, height: 400))
+        let c = Creature(dna: DNA.random(), position: CGPoint(x: 10, y: 10))
+        grid.rebuild(creatures: [c], food: [])
+        c.position = CGPoint(x: 300, y: 300)
+        grid.rebuildCreatures([c])
+
+        var foundAtNewPlace = false
+        grid.forEachCreature(near: CGPoint(x: 300, y: 300), within: 10) { if $0 === c { foundAtNewPlace = true } }
+        #expect(foundAtNewPlace)
+
+        var foundAtOldPlace = false
+        grid.forEachCreature(near: CGPoint(x: 10, y: 10), within: 10) { if $0 === c { foundAtOldPlace = true } }
+        #expect(!foundAtOldPlace)
+    }
+
+    // Everything that queries the grid runs after movement, so the cells have to be refiled in
+    // between. Otherwise a creature that moved into range this tick is still filed under the
+    // cell it left, and the query misses it.
+    @Test func everyCreatureIsFindableAfterATick() {
+        let world = World(size: CGSize(width: 2000, height: 2000))
+        world.populate(creatures: 8, food: 0)
+        world.tick()
+        for creature in world.creatures {
+            let probe = Creature(dna: DNA.random(), position: creature.position)
+            #expect(world.nearestCreature(to: probe, within: 1) != nil)
+        }
+    }
+
+    // MARK: - Body mass is inside the energy accounting
+
+    @Test func buildingBodyMassIsPaidForOutOfEnergy() {
+        var dna = DNA.random()
+        dna.genes[2] = 0.5                       // size 0.5 -> maxBodyMass 50
+        let c = Creature(dna: dna, position: .zero)
+        c.energy = c.maxEnergy                   // well fed: mass may grow
+        let massBefore   = c.bodyMass
+        let energyBefore = c.energy
+        c.tick()
+        let gained = c.bodyMass - massBefore
+        #expect(gained > 0)
+        // The energy bill is maintenance plus the mass just bought, never less.
+        let spent = energyBefore - c.energy
+        #expect(spent > gained * Creature.massBuildCost)
+    }
+
+    @Test func catabolismReturnsEnergyAtAConversionLoss() {
+        var dna = DNA.random()
+        dna.genes[2] = 0.5
+        let c = Creature(dna: dna, position: .zero)
+        c.energy = c.maxEnergy * 0.1             // starving: mass is burned back
+        let massBefore   = c.bodyMass
+        let energyBefore = c.energy
+        c.tick()
+        let burned = massBefore - c.bodyMass
+        #expect(burned > 0)
+        // Mass no longer vanishes without a trace: it comes back as energy, but at a loss, so
+        // the net energy change is better than maintenance alone and worse than a full refund.
+        let credited = burned * Creature.massCatabolismYield
+        #expect(c.energy > energyBefore - credited)
+        #expect(Creature.massCatabolismYield < Creature.massBuildCost)
+    }
+
+    @Test func newbornMassIsBoughtOutOfTheBirthEndowment() {
+        var dna = DNA.random()
+        dna.genes[2] = 0.5
+        let c = Creature(dna: dna, position: .zero)
+        let endowment: Float = 40
+        c.endow(with: endowment)
+        // Nothing is created: energy kept plus energy spent on mass equals what was paid in.
+        #expect(abs((c.energy + c.bodyMass * Creature.massBuildCost) - endowment) < 0.01)
+        #expect(c.bodyMass > 0)
+        #expect(c.bodyMass <= c.maxBodyMass * Creature.birthMassFraction + 0.001)
+    }
+
+    // Body mass has to be earned, otherwise corpse value is just the size gene and says
+    // nothing about how well an individual actually fed.
+    @Test func newbornsStartWellBelowTheirMassCeiling() {
+        let c = Creature(dna: DNA.random(), position: .zero)
+        #expect(c.bodyMass < c.maxBodyMass)
+        #expect(abs(c.bodyMass - c.maxBodyMass * Creature.birthMassFraction) < 0.001)
+    }
+
+    @Test func wellFedCreaturesGrowTowardsTheirMassCeiling() {
+        var dna = DNA.random()
+        dna.genes[2] = 0.5
+        let c = Creature(dna: dna, position: .zero)
+        let start = c.bodyMass
+        for _ in 0..<50 {
+            c.energy = c.maxEnergy               // kept well fed throughout
+            c.tick()
+        }
+        #expect(c.bodyMass > start)
+        #expect(c.bodyMass <= c.maxBodyMass + 0.001)
+    }
+
+    // MARK: - The kill bonus follows the damage
+
+    @Test func killBonusIsSplitByDamageDealt() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        var dna = DNA.random()
+        dna.genes[2] = 0.5
+        dna.genes[3] = 0.8                       // the same aggression for both attackers
+        let strong = Creature(dna: dna, position: CGPoint(x: 10, y: 10))
+        let weak   = Creature(dna: dna, position: CGPoint(x: 20, y: 20))
+        let victim = Creature(dna: dna, position: CGPoint(x: 15, y: 15))
+        strong.energy = 10
+        weak.energy   = 10
+        victim.energy = -1                       // dies this tick
+        victim.recordAttack(from: strong, damage: 30)
+        victim.recordAttack(from: weak,   damage: 10)
+
+        world.creatures = [strong, weak, victim]
+        world.checkDeaths()
+
+        let strongGain = strong.energy - 10
+        let weakGain   = weak.energy - 10
+        #expect(strongGain > 0)
+        #expect(weakGain > 0)
+        // Three quarters of the damage, three quarters of the bonus.
+        #expect(abs(strongGain - 3 * weakGain) < 0.01)
+        // Everything paid out still comes off the corpse.
+        let corpse = world.foodSources.first { $0.type == .corpse }
+        #expect(corpse != nil)
+        #expect(abs((corpse!.energyValue + strongGain + weakGain) - victim.bodyMass) < 0.01)
+    }
+
+    @Test func deathIsPredationWhoeverStruckLast() {
+        let world = World(size: CGSize(width: 200, height: 200))
+        let killerA = Creature(dna: DNA.random(), position: .zero)
+        let killerB = Creature(dna: DNA.random(), position: .zero)
+        let victim  = Creature(dna: DNA.random(), position: .zero)
+        victim.energy = -1
+        victim.recordAttack(from: killerA, damage: 5)
+        victim.recordAttack(from: killerB, damage: 5)
+        world.creatures = [killerA, killerB, victim]
+        world.checkDeaths()
+        #expect(world.deathsByPredation == 1)
+        #expect(world.deathsByStarvation == 0)
+    }
+
+    // MARK: - Contested food does not go by array position
+
+    // Survivors keep their index and newborns are appended, so array order correlates with
+    // age. Resolving contested food by iteration order therefore let older creatures win every
+    // contest, a selection pressure nothing in the design intends.
+    @Test func contestedFoodDoesNotAlwaysGoToTheSameArraySlot() {
+        var firstWins = 0
+        let trials = 200
+        for _ in 0..<trials {
+            let world = World(size: CGSize(width: 200, height: 200))
+            let dna = DNA.random()
+            let first  = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+            let second = Creature(dna: dna, position: CGPoint(x: 100, y: 100))
+            first.energy  = 1
+            second.energy = 1
+            world.creatures   = [first, second]
+            world.foodSources = [FoodSource(position: CGPoint(x: 100, y: 100))]
+            world.plantCount  = 1
+            world.rebuildGrid()
+            world.feedCreatures()
+            #expect(world.foodSources.isEmpty)           // exactly one of them ate it
+            if first.energy > second.energy { firstWins += 1 }
+        }
+        #expect(firstWins > 0)
+        #expect(firstWins < trials)
+    }
+
+    // MARK: - Generations count descent
+
+    @Test func offspringAreOneGenerationPastTheirParents() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        world.maxPopulation = 100
+        world.mutationRate  = 0
+        var dna = DNA.random()
+        dna.genes[4]  = 0.5
+        dna.genes[5]  = 0.0
+        dna.genes[10] = 0.0
+        let a = Creature(dna: dna, position: CGPoint(x: 200, y: 200))
+        let b = Creature(dna: dna, position: CGPoint(x: 210, y: 200))
+        for c in [a, b] {
+            c.age = 100
+            c.energy = c.maxEnergy * 0.9
+            c.lastAction = ActionOutput(fromArray: [0.5, 0.0, 1.0, 0.0])
+        }
+        #expect(a.generation == 0)                 // founders
+        world.creatures = [a, b]
+        world.rebuildGrid()
+        world.reproduceCreatures()
+        let children = world.creatures.filter { $0 !== a && $0 !== b }
+        #expect(!children.isEmpty)
+        #expect(children.allSatisfy { $0.generation == 1 })
+    }
+
+    // The world reports the mean generation of the living population, not the number of ticks
+    // in which something happened to be born.
+    @Test func worldGenerationIsThePopulationMean() {
+        let world = World(size: CGSize(width: 400, height: 400))
+        let dna = DNA.random()
+        world.creatures = [
+            Creature(dna: dna, position: .zero, generation: 2),
+            Creature(dna: dna, position: .zero, generation: 4)
+        ]
+        #expect(world.generation == 3)
+        world.creatures = []
+        #expect(world.generation == 0)
+    }
+
+    // MARK: - Terrain bearings use their full range
+
+    // One biome filling exactly the half of the cone that points hardest to one side is the
+    // strongest reading there is, and it has to read as 1. Normalizing by the total sample
+    // weight instead capped the sensor at about a third of its nominal range.
+    @Test func terrainBearingsReachTheEndsOfTheirRange() {
+        // Grassland below, water above, observer on the boundary looking along +x: every
+        // sample to its right is water, every sample to its left is grassland.
+        let map = BiomeMap(tiles: [.grassland, .water], cols: 1, rows: 2, tileSize: 100)
+        let b = map.directionalBearings(observerX: 50, observerY: 100,
+                                        headingCos: 1, headingSin: 0,
+                                        sightRadius: 50, sightAngle: 2 * .pi)
+        #expect(abs(b.water - 1) < 0.001)
+        #expect(abs(b.grassland + 1) < 0.001)
+    }
+
+    // The scale must not depend on the sightAngle gene: the same lake has to read the same for
+    // a narrow-coned creature and a wide-coned one, or an inherited weight means different
+    // things in different phenotypes and changing sightAngle silently perturbs terrain
+    // behaviour as a side effect.
+    @Test func terrainBearingScaleIsIndependentOfTheSightAngleGene() {
+        let map = BiomeMap(tiles: [.grassland, .water], cols: 1, rows: 2, tileSize: 100)
+        for angle: Float in [2 * .pi / 3, .pi, 4 * .pi / 3, 2 * .pi] {
+            let b = map.directionalBearings(observerX: 50, observerY: 100,
+                                            headingCos: 1, headingSin: 0,
+                                            sightRadius: 50, sightAngle: angle)
+            #expect(abs(b.water - 1) < 0.001)
+        }
+    }
+
+    // MARK: - Perceiving nothing is not a reading
+
+    @Test func anEmptyFieldOfViewReadsAsZeroProximity() {
+        let world = World(size: CGSize(width: 2000, height: 2000))
+        world.sensorRecording = true
+        let c = Creature(dna: DNA.random(), position: CGPoint(x: 1000, y: 1000))
+        world.creatures = [c]
+        world.tick()
+        #expect(c.lastSensors?.foodProximity == 0)
+        #expect(c.lastSensors?.creatureProximity == 0)
+        #expect(c.lastSensors?.visibleFoodCount == 0)
+    }
+
+    @Test func foodUnderfootReadsAsFullProximity() {
+        let world = World(size: CGSize(width: 2000, height: 2000))
+        world.sensorRecording = true
+        var dna = DNA.random()
+        dna.genes[11] = 1.0                        // 360 degree sight: no cone to miss with
+        let c = Creature(dna: dna, position: CGPoint(x: 1000, y: 1000))
+        world.creatures   = [c]
+        world.foodSources = [FoodSource(position: CGPoint(x: 1000, y: 1000))]
+        world.plantCount  = 1
+        world.tick()
+        // Proximity is monotone the other way round from distance: nothing in sight is 0 and
+        // being right on top of something is 1.
+        #expect((c.lastSensors?.foodProximity ?? 0) > 0.9)
+    }
+
     @Test func eventRecordingOffKeepsBufferEmpty() {
         let world = World(size: CGSize(width: 200, height: 200))
         // eventRecording stays false (the default)
@@ -977,7 +1343,7 @@ struct SwiftolutionTests {
 // without spelling out thirty fields per call site.
 private func uniformSensorInput(_ v: Float) -> SensorInput {
     SensorInput(
-        angleToFood: v, distanceToFood: v, angleToCreature: v, distanceToCreature: v,
+        angleToFood: v, foodProximity: v, angleToCreature: v, creatureProximity: v,
         ownEnergy: v, localDensity: v, approachVelocity: v, nearestFoodType: v,
         avgNearbyHeading: v, nearestCreatureRed: v, nearestCreatureGreen: v,
         nearestCreatureBlue: v, visibleCreatureCount: v, ownSenescence: v,

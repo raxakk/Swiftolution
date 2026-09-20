@@ -26,7 +26,6 @@ final class World {
     let size: CGSize
     var creatures:   [Creature]   = []
     var foodSources: [FoodSource] = []
-    var generation:  Int = 0
     var tickCount:   Int = 0
     var totalBirths: Int = 0
 
@@ -112,12 +111,62 @@ final class World {
         }
     }
 
+    // Mean generation of descent over the living population: founders are 0 and every child
+    // is one past its eldest parent. The field this replaced counted ticks in which any birth
+    // happened, which converges on the tick count once nearly every tick contains a birth and
+    // said nothing about descent, though the UI labelled it "Generation" all the same.
+    var generation: Int {
+        guard !creatures.isEmpty else { return 0 }
+        var sum = 0
+        for creature in creatures { sum += creature.generation }
+        return Int((Double(sum) / Double(creatures.count)).rounded())
+    }
+
     private var grid: SpatialGrid
 
     func rebuildGrid() { grid.rebuild(creatures: creatures, food: foodSources) }
 
+    // MARK: - Toroidal geometry
+
+    // The world wraps, so the shortest separation between two points may run across the seam.
+    // Every spatial query goes through these: movement has always wrapped, and perception that
+    // does not turns the lines x=0 and y=0 into invisible walls that creatures can see through
+    // but not across, which would let speciation form at a coordinate artefact.
+    private let worldW: Float
+    private let worldH: Float
+    private let halfW:  Float
+    private let halfH:  Float
+
+    // Positions live in [0, size), so a raw delta lies in (-span, span) and one fold suffices.
+    @inline(__always)
+    func torDx(_ dx: Float) -> Float {
+        if dx >  halfW { return dx - worldW }
+        if dx < -halfW { return dx + worldW }
+        return dx
+    }
+
+    @inline(__always)
+    func torDy(_ dy: Float) -> Float {
+        if dy >  halfH { return dy - worldH }
+        if dy < -halfH { return dy + worldH }
+        return dy
+    }
+
+    // The point halfway between two positions along the shorter (possibly wrapped) path.
+    // The plain average would place a pair straddling the seam on the far side of the world.
+    func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+        let dx = CGFloat(torDx(Float(b.x - a.x))) / 2
+        let dy = CGFloat(torDy(Float(b.y - a.y))) / 2
+        return CGPoint(x: (a.x + dx + size.width ).truncatingRemainder(dividingBy: size.width),
+                       y: (a.y + dy + size.height).truncatingRemainder(dividingBy: size.height))
+    }
+
     init(size: CGSize = CGSize(width: 1200, height: 900)) {
         self.size = size
+        self.worldW = Float(size.width)
+        self.worldH = Float(size.height)
+        self.halfW  = Float(size.width)  / 2
+        self.halfH  = Float(size.height) / 2
         self.grid = SpatialGrid(cellSize: 80, worldSize: size)
         self.biomeMap = BiomeMap(worldSize: size)
     }
@@ -144,6 +193,11 @@ final class World {
         tickCount += 1
         grid.rebuild(creatures: creatures, food: foodSources)
         moveCreatures()
+        // Movement has moved creatures out of the cells they were filed under, so refile them
+        // before anything queries the grid again. Food has not moved, so its half of the grid
+        // (and the density raster over it) stands. Skipping this made every query after
+        // movement blind to anyone who had just moved into range.
+        grid.rebuildCreatures(creatures)
         attackCreatures()
         feedCreatures()
         checkDeaths()
@@ -230,8 +284,8 @@ final class World {
         var nearestFoodIsCorpse = false
         var foodInFOVCount = 0
         grid.forEachFood(near: creature.position, within: sightRadius) { food in
-            let dx = Float(food.position.x) - px
-            let dy = Float(food.position.y) - py
+            let dx = self.torDx(Float(food.position.x) - px)
+            let dy = self.torDy(Float(food.position.y) - py)
             let distSq = dx * dx + dy * dy
             if distSq < sightRSq && inFOV(dx, dy, distSq) {
                 foodInFOVCount += 1
@@ -244,12 +298,17 @@ final class World {
             }
         }
 
+        // Proximity, not distance: 0 means "nothing in sight" and 1 means "right here". Under
+        // the old distance encoding the empty case had to be reported as some number, and
+        // whatever number that was doubled as a real reading. Proximity puts the collision
+        // where it costs nothing: seeing nothing now reads the same as food at the very edge
+        // of the sight radius, which calls for the same behaviour anyway.
         var angleToFood:     Float = 0
-        var distToFood:      Float = 1
+        var foodProximity:   Float = 0
         var nearestFoodType: Float = 0
         if nearestFoodDistSq < .greatestFiniteMagnitude {
             angleToFood     = normalizeAngle(atan2(nearestFoodDy, nearestFoodDx) - creature.heading) / .pi
-            distToFood      = sqrt(nearestFoodDistSq) / sightR
+            foodProximity   = max(0, 1 - sqrt(nearestFoodDistSq) / sightR)
             nearestFoodType = nearestFoodIsCorpse ? 1.0 : 0.0
         }
 
@@ -263,8 +322,8 @@ final class World {
         var herdCount = 0
         grid.forEachCreature(near: creature.position, within: max(sightRadius, 80)) { other in
             guard other !== creature else { return }
-            let dx = Float(other.position.x) - px
-            let dy = Float(other.position.y) - py
+            let dx = self.torDx(Float(other.position.x) - px)
+            let dy = self.torDy(Float(other.position.y) - py)
             let distSq = dx * dx + dy * dy
             if distSq < 55 * 55 { densityCount += 1 }
             if distSq < 80 * 80 {
@@ -283,16 +342,16 @@ final class World {
             }
         }
 
-        var angleToCreature:   Float = 0
-        var distToCreature:    Float = 1
-        var approachVelocity:  Float = 0
+        var angleToCreature:     Float = 0
+        var creatureProximity:   Float = 0
+        var approachVelocity:    Float = 0
         var nearestCreatureRed:   Float = 0.5   // neutral grey when no creature is visible
         var nearestCreatureGreen: Float = 0.5
         var nearestCreatureBlue:  Float = 0.5
         if let other = nearestOther {
             let dist = sqrt(nearestDistSq)
-            angleToCreature = normalizeAngle(atan2(nearestDy, nearestDx) - creature.heading) / .pi
-            distToCreature  = dist / sightR
+            angleToCreature   = normalizeAngle(atan2(nearestDy, nearestDx) - creature.heading) / .pi
+            creatureProximity = max(0, 1 - dist / sightR)
             let otherSpeed = (other.lastAction?.speed ?? 0) * other.maxSpeed
             let vx = other.headingCos * otherSpeed
             let vy = other.headingSin * otherSpeed
@@ -333,9 +392,9 @@ final class World {
 
         return SensorInput(
             angleToFood:          angleToFood,
-            distanceToFood:       distToFood,
+            foodProximity:        foodProximity,
             angleToCreature:      angleToCreature,
-            distanceToCreature:   distToCreature,
+            creatureProximity:    creatureProximity,
             ownEnergy:            creature.energy / creature.maxEnergy,
             localDensity:         localDensity,
             approachVelocity:     approachVelocity,
@@ -371,6 +430,9 @@ final class World {
         // ObjectIdentifier: an 8-byte pointer hash instead of a 16-byte UUID hash, twice as fast.
         var energyDeltas = [ObjectIdentifier: Float](minimumCapacity: creatures.count)
 
+        // Array order is safe here: every attack is accumulated into energyDeltas and applied
+        // afterwards, so nobody strikes "first", and the kill bonus is split by damage dealt
+        // rather than handed to whoever came last. Feeding is the pass that needs shuffling.
         for attacker in creatures {
             // No hard aggression threshold: damage and cost already scale with aggression.
             guard let action = attacker.lastAction,
@@ -386,7 +448,7 @@ final class World {
 
             energyDeltas[ObjectIdentifier(attacker), default: 0] -= attacker.dna.aggression * 2
             energyDeltas[ObjectIdentifier(victim),   default: 0] -= damage
-            victim.lastAttacker = attacker
+            victim.recordAttack(from: attacker, damage: damage)
         }
 
         for creature in creatures {
@@ -401,7 +463,9 @@ final class World {
         var eatenIDs = Set<UUID>()
         var eatenPlants  = 0
         var eatenCorpses = 0
-        for creature in creatures {
+        // Shuffled for the same reason as attacking: the eatenIDs set gives a contested item to
+        // whoever reaches it first in iteration order, which is otherwise the oldest creature.
+        for creature in creatures.shuffled() {
             // A separate network decision per food type, which makes selective diets possible.
             let action = creature.lastAction
             let wantsPlant  = (action?.wantsToEatPlant  ?? 1.0) > 0.5
@@ -415,8 +479,8 @@ final class World {
             grid.forEachFood(near: creature.position, within: eatRadius) { food in
                 let wants = food.type == .plant ? wantsPlant : wantsCorpse
                 guard wants else { return }
-                let dx = Float(food.position.x) - px
-                let dy = Float(food.position.y) - py
+                let dx = self.torDx(Float(food.position.x) - px)
+                let dy = self.torDy(Float(food.position.y) - py)
                 guard dx * dx + dy * dy < eatRSq, !eatenIDs.contains(food.id) else { return }
                 creature.eat(food: food,
                              plantToxinFactor: plantToxinFactor,
@@ -452,7 +516,7 @@ final class World {
                 // Gompertz roll came up).
                 let cause: DeathCause
                 if !creature.isAlive {
-                    cause = creature.lastAttacker != nil ? .predation : .starvation
+                    cause = creature.wasAttackedThisTick ? .predation : .starvation
                 } else {
                     cause = .oldAge
                 }
@@ -468,13 +532,20 @@ final class World {
                 }
                 if creature.bodyMass > 1 {
                     var corpseEnergy = creature.bodyMass
-                    if let killer = creature.lastAttacker, killer.isAlive {
-                        // The attacker feeds on the kill directly, taking a share proportional
-                        // to its aggression. That energy is deducted from the corpse rather than
-                        // created out of nothing.
-                        let bonus = creature.bodyMass * killer.dna.aggression * 0.4
-                        killer.energy = min(killer.energy + bonus, killer.maxEnergy)
-                        corpseEnergy -= bonus
+                    // Attackers feed on the kill directly, each taking a share proportional to
+                    // its own aggression and to the damage it actually dealt. Splitting by
+                    // damage is what gives pack hunting a gradient to climb: before this the
+                    // whole bonus went to whichever attacker happened to come last in array
+                    // order. The energy is deducted from the corpse, never created.
+                    let totalDamage = creature.attacksTaken.reduce(0) { $0 + $1.damage }
+                    if totalDamage > 0 {
+                        for attack in creature.attacksTaken {
+                            guard let killer = attack.attacker, killer.isAlive else { continue }
+                            let bonus = creature.bodyMass * killer.dna.aggression * 0.4
+                                      * (attack.damage / totalDamage)
+                            killer.energy = min(killer.energy + bonus, killer.maxEnergy)
+                            corpseEnergy -= bonus
+                        }
                     }
                     if corpseEnergy > 1 {
                         foodSources.append(FoodSource(position: creature.position,
@@ -529,14 +600,14 @@ final class World {
             let mateRSq = Float(World.mateRadius * World.mateRadius)
             let parentX = Float(parent.position.x)
             let parentY = Float(parent.position.y)
-            grid.forEachCreature(near: parent.position, within: World.mateRadius) { other in
+            grid.forEachCreature(near: parent.position, within: World.mateRadius) { [self] other in
                 guard partner == nil,
                       other !== parent,
                       !mated.contains(ObjectIdentifier(other)),
                       (other.lastAction?.wantsToReproduce ?? 0) > 0.5,
                       other.canReproduce else { return }
-                let dx = Float(other.position.x) - parentX
-                let dy = Float(other.position.y) - parentY
+                let dx = torDx(Float(other.position.x) - parentX)
+                let dy = torDy(Float(other.position.y) - parentY)
                 guard dx * dx + dy * dy < mateRSq else { return }
                 let compatible = speciationEnabled
                     ? parent.dna.geneticDistance(to: other.dna) <= speciationThreshold
@@ -549,8 +620,7 @@ final class World {
                 // Sexual reproduction: the genes of both parents are combined
                 mated.insert(ObjectIdentifier(parent))
                 mated.insert(ObjectIdentifier(partner))
-                let midPoint = CGPoint(x: (parent.position.x + partner.position.x) / 2,
-                                       y: (parent.position.y + partner.position.y) / 2)
+                let midPoint = midpoint(parent.position, partner.position)
                 let litter = min(parent.dna.litterSize, maxPopulation - creatures.count - newborns.count)
                 // Each parent invests 30% of its maximum energy, regardless of litter size, and
                 // the combined investment is split evenly across the offspring. No energy leak:
@@ -558,11 +628,15 @@ final class World {
                 let costPerParent: Float = 0.30
                 let totalPool = parent.maxEnergy * costPerParent + partner.maxEnergy * costPerParent
                 let perChildEnergy = totalPool / Float(litter)
+                let childGeneration = max(parent.generation, partner.generation) + 1
                 for _ in 0..<litter {
                     let childDNA = parent.dna.crossed(with: partner.dna)
                                              .mutated(rate: mutationRate, strength: mutationStrength)
-                    let child = Creature(dna: childDNA, position: dispersedPosition(from: midPoint))
-                    child.energy = min(child.maxEnergy * 0.6, perChildEnergy)
+                    let child = Creature(dna: childDNA, position: dispersedPosition(from: midPoint),
+                                         generation: childGeneration)
+                    // The endowment buys the child's starter body as well as its energy, so the
+                    // mass a newborn carries is paid for out of what the parents invested.
+                    child.endow(with: min(child.maxEnergy * 0.6, perChildEnergy))
                     newborns.append(child)
                 }
                 parent.energy  -= parent.maxEnergy  * costPerParent
@@ -575,8 +649,9 @@ final class World {
                 let perChildEnergy = parent.maxEnergy * cost / Float(litter)
                 for _ in 0..<litter {
                     let childDNA = parent.dna.mutated(rate: mutationRate, strength: mutationStrength)
-                    let child = Creature(dna: childDNA, position: dispersedPosition(from: parent.position))
-                    child.energy = min(child.maxEnergy * 0.6, perChildEnergy)
+                    let child = Creature(dna: childDNA, position: dispersedPosition(from: parent.position),
+                                         generation: parent.generation + 1)
+                    child.endow(with: min(child.maxEnergy * 0.6, perChildEnergy))
                     newborns.append(child)
                 }
                 parent.energy -= parent.maxEnergy * cost
@@ -593,7 +668,6 @@ final class World {
             }
             creatures.append(contentsOf: newborns)
             totalBirths += newborns.count
-            generation  += 1
         }
     }
 
@@ -782,10 +856,10 @@ final class World {
         let py = Float(creature.position.y)
         var best: Creature? = nil
         var bestDistSq = radiusSq
-        grid.forEachCreature(near: creature.position, within: radius) { other in
+        grid.forEachCreature(near: creature.position, within: radius) { [self] other in
             guard other !== creature else { return }
-            let dx = Float(other.position.x) - px
-            let dy = Float(other.position.y) - py
+            let dx = torDx(Float(other.position.x) - px)
+            let dy = torDy(Float(other.position.y) - py)
             let distSq = dx * dx + dy * dy
             if distSq < bestDistSq {
                 bestDistSq = distSq
